@@ -23,12 +23,20 @@ BULLISH_KEYWORDS = [
     "多頭", "看漲", "買進", "強勢", "突破", "噴出", "飆漲", "看好",
     "上攻", "作多", "做多", "漲停", "強攻", "拉升", "反彈", "續漲",
     "站上", "衝破", "噴發", "起漲",
+    # 論壇常見用語
+    "外資買超", "投信買超", "法人買超", "大買", "狂買", "大漲",
+    "創新高", "噴漲", "強彈", "多方", "偏多", "有撐", "看到",
+    "衝高", "急漲", "補漲", "趨勢向上", "黃金交叉",
 ]
 
 BEARISH_KEYWORDS = [
     "空頭", "看跌", "賣出", "弱勢", "破底", "崩盤", "下殺", "看壞",
     "出場", "作空", "做空", "跌停", "急殺", "摜壓", "下跌", "跌破",
     "套牢", "止損", "跌深", "爆跌",
+    # 論壇常見用語
+    "外資賣超", "外資續賣", "投信賣超", "法人賣超", "大賣", "狂跌",
+    "創新低", "死貓彈", "空方", "偏空", "無力", "撐不住",
+    "急跌", "趨勢向下", "死亡交叉", "開盤空", "弱勢整理",
 ]
 
 _redis_client: redis.Redis | None = None
@@ -82,21 +90,12 @@ async def _scrape_cmoney(symbol: str) -> list[str]:
             # 隨機 delay 避免被偵測
             await asyncio.sleep(random.uniform(2, 4))
 
-            # 嘗試取得留言文字（selector 依 CMoney 實際 DOM 調整）
-            selectors = [
-                ".forum-comment__content",
-                ".comment-content",
-                "[class*='comment'] p",
-                "[class*='post-content']",
-            ]
-            for sel in selectors:
-                elements = await page.query_selector_all(sel)
-                if elements:
-                    for el in elements[:MAX_COMMENTS]:
-                        text = await el.inner_text()
-                        if text.strip():
-                            comments.append(text.strip())
-                    break
+            # 抓貼文區塊（article 為 CMoney 論壇主要容器）
+            elements = await page.query_selector_all("article")
+            for el in elements[:MAX_COMMENTS]:
+                text = await el.inner_text()
+                if text.strip():
+                    comments.append(text.strip())
 
             await browser.close()
     except Exception as e:

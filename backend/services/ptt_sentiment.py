@@ -21,12 +21,16 @@ BULLISH_KEYWORDS = [
     "多頭", "看漲", "買進", "強勢", "突破", "噴出", "飆漲", "看好",
     "上攻", "作多", "做多", "漲停", "強攻", "拉升", "反彈", "續漲",
     "站上", "衝破", "噴發", "起漲",
+    "外資買超", "投信買超", "法人買超", "大買", "大漲",
+    "創新高", "強彈", "多方", "偏多", "衝高", "急漲", "補漲", "黃金交叉",
 ]
 
 BEARISH_KEYWORDS = [
     "空頭", "看跌", "賣出", "弱勢", "破底", "崩盤", "下殺", "看壞",
     "出場", "作空", "做空", "跌停", "急殺", "摜壓", "下跌", "跌破",
     "套牢", "止損", "跌深", "爆跌",
+    "外資賣超", "外資續賣", "投信賣超", "法人賣超", "大賣", "狂跌",
+    "創新低", "空方", "偏空", "無力", "撐不住", "急跌", "死亡交叉", "弱勢整理",
 ]
 
 _redis_client: redis.Redis | None = None
@@ -52,42 +56,27 @@ def _score_text(text: str) -> str:
 def _fetch_ptt_articles(pages: int = 5) -> list[dict]:
     """爬取 PTT Stock 板最新 N 頁的貼文列表"""
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Cookie": "over18=1",  # 跳過年齡驗證
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Cookie": "over18=1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9",
     }
     articles = []
 
     try:
-        with httpx.Client(headers=headers, timeout=15, follow_redirects=True) as client:
+        with httpx.Client(headers=headers, timeout=15, follow_redirects=True, verify=False) as client:
             # 先取得最新頁碼
             resp = client.get("https://www.ptt.cc/bbs/Stock/index.html")
             resp.raise_for_status()
 
-            # 從「上頁」連結解析當前最大頁碼
-            from html.parser import HTMLParser
-
-            class PageParser(HTMLParser):
-                def __init__(self):
-                    super().__init__()
-                    self.prev_url: str | None = None
-
-                def handle_starttag(self, tag, attrs):
-                    if tag == "a":
-                        attr_dict = dict(attrs)
-                        href = attr_dict.get("href", "")
-                        if "/bbs/Stock/index" in href and href.endswith(".html"):
-                            self.prev_url = href
-
-            parser = PageParser()
-            parser.feed(resp.text)
-
-            # 解析頁碼（e.g. /bbs/Stock/index3980.html → 3980）
-            start_page = None
-            if parser.prev_url:
-                import re
-                m = re.search(r"index(\d+)\.html", parser.prev_url)
-                if m:
-                    start_page = int(m.group(1)) + 1  # 上頁+1 = 最新頁
+            # 找所有頁碼連結，取最大值+1 = 最新頁
+            import re
+            all_nums = [int(m.group(1)) for m in re.finditer(r"/bbs/Stock/index(\d+)\.html", resp.text)]
+            start_page = max(all_nums) + 1 if all_nums else None
 
             if start_page is None:
                 logger.warning("PTT: 無法解析頁碼，跳過")
@@ -147,9 +136,10 @@ def _parse_articles(html: str) -> list[dict]:
     return parser.articles
 
 
-def get_ptt_sentiment(symbol: str) -> dict:
+def get_ptt_sentiment(symbol: str, name: str | None = None) -> dict:
     """
     取得指定股票代號的 PTT Stock 板情緒分析。
+    name 為公司名稱（如「台積電」），一併搜尋以提升命中率。
     優先從 Redis 快取讀取，cache miss 才爬取。
     """
     cache_key = f"ptt_sentiment:{symbol}"
@@ -164,8 +154,10 @@ def get_ptt_sentiment(symbol: str) -> dict:
 
     articles = _fetch_ptt_articles(pages=5)
 
-    # 篩選含有股票代號的貼文（標題含代號或股票名）
-    relevant = [a for a in articles if symbol in a["title"]]
+    keywords = {symbol}
+    if name:
+        keywords.add(name)
+    relevant = [a for a in articles if any(kw in a["title"] for kw in keywords)]
 
     bullish_count = 0
     bearish_count = 0

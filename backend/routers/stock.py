@@ -114,6 +114,12 @@ async def get_stock_sentiment(symbol: str):
     CMoney 爬取失敗時回傳 null，前端不顯示該區塊
     """
     sym = symbol.upper()
-    ptt = get_ptt_sentiment(sym)
+    name = None
+    try:
+        q = fetch_stock_quote(sym)
+        name = q.get("name") if q else None
+    except Exception:
+        pass
+    ptt = get_ptt_sentiment(sym, name=name)
     cmoney = get_cmoney_sentiment(sym)
     return {"symbol": sym, "ptt": ptt, "cmoney": cmoney}
