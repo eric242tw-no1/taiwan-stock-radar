@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* ── Dark theme (default) ───────────────────────────────────────────────── */
+:root {
+  --bg-base: #0a0a0f;
+  --bg-card: #111118;
+  --bg-card-hover: #1a1a24;
+  --border: #2a2a3a;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888aa;
+  --green: #00c076;
+  --red: #ff4d4d;
+  --yellow: #f5a623;
+  --blue: #3d7eff;
+
+  /* Page-level semantic tokens */
+  --c-bg-main:  #0a0a0f;
+  --c-bg-deep:  #0a0e1a;
+  --c-bg-card:  #0d1117;
+  --c-bg-modal: #111118;
+  --c-border:   #1e2d45;
+  --c-label:    #4a6080;
+  --c-text:     #e8e8f0;
+  --c-text-dim: #8888aa;
+  --c-text-mid: #c8c8d8;
+
+  /* sidebar */
+  --c-sidebar-bg:     #0d0d15;
+  --c-sidebar-border: #2a2a3a;
+  --c-sidebar-active: #1a1a2e;
+  --c-sidebar-text:   #e8e8f0;
+  --c-sidebar-muted:  #555570;
+}
+
+/* ── Light theme ────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --c-bg-main:  #f0f4f8;
+  --c-bg-deep:  #e8edf5;
+  --c-bg-card:  #ffffff;
+  --c-bg-modal: #f8fafd;
+  --c-border:   #c5d4e8;
+  --c-label:    #4a6a90;
+  --c-text:     #1a2030;
+  --c-text-dim: #6080a0;
+  --c-text-mid: #50607a;
+
+  --c-sidebar-bg:     #f5f8fc;
+  --c-sidebar-border: #d0dae8;
+  --c-sidebar-active: #e0eaf8;
+  --c-sidebar-text:   #1a2030;
+  --c-sidebar-muted:  #8090a8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--c-bg-main);
+  color: var(--c-text);
+  font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  font-size: 16px;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Bottom Nav (mobile only) ───────────────────────────────────────────── */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 62px;
+  background: color-mix(in srgb, var(--c-bg-main) 96%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(0, 192, 118, 0.15);
+  box-shadow: 0 -1px 0 rgba(0,0,0,0.6), 0 -8px 24px rgba(0,0,0,0.4);
+  z-index: 100;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 4px;
+}
+.bottom-nav a {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center;
+  gap: 3px; text-decoration: none;
+  color: #44445a; flex: 1;
+  padding: 6px 0 8px;
+  position: relative;
+  transition: color 0.2s;
+}
+.bottom-nav a.active { color: #00c076; }
+.bn-icon { display: flex; align-items: center; justify-content: center; }
+.bn-label { font-size: 10px; font-weight: 500; letter-spacing: 0.5px; }
+.bn-dot {
+  position: absolute;
+  top: 4px; left: 50%; transform: translateX(-50%);
+  width: 32px; height: 2px;
+  background: linear-gradient(90deg, transparent, #00c076, transparent);
+  border-radius: 1px;
+  box-shadow: 0 0 8px #00c076;
+}
+
+/* ── Mobile breakpoint ──────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .desktop-sidebar { display: none !important; }
+  .bottom-nav { display: flex !important; }
+  .topbar-search { display: none !important; }
+  .main-scroll { padding: 8px 8px 72px !important; }  /* 64px nav + 8px safe area */
+  .market-grid { grid-template-columns: 1fr !important; }
+  .us-index-grid { grid-template-columns: 1fr 1fr !important; }
+  .heatmap-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* 鎖住橫向滑動 */
+  html, body { overflow-x: hidden !important; max-width: 100vw; }
+  body > div { max-width: 100vw; overflow-x: hidden; }
+  .main-scroll { overflow-x: hidden !important; }
+  * { max-width: 100%; }
+
+  /* table 水平捲動 */
+  table { min-width: 560px; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* S25 Ultra / Android 圓弧底部 safe area */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .bottom-nav {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    height: calc(62px + env(safe-area-inset-bottom));
+  }
+  @media (max-width: 768px) {
+    .main-scroll {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+    }
+  }
+}

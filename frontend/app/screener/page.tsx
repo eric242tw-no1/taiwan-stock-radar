@@ -1,0 +1,438 @@
+"use client";
+import { useEffect, useState } from "react";
+
+function useIsMobile() {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const check = () => setM(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return m;
+}
+
+interface Stock {
+  code: string; name: string; price: number; change_pct: number;
+  volume_bn: number; vol_ratio: number;       // 量比（今日量/5日均量）
+  rsi: number; ma_align: boolean;
+  foreign_buy: boolean; ai_score: number; industry: string;
+  limit_up: boolean; limit_down: boolean;     // 漲/跌停
+  big_order_in: boolean;                      // 大單流入
+  gap_up: boolean;                            // 開盤跳空 >2%
+}
+
+const DEMO_STOCKS: Stock[] = [
+  // 權值股
+  { code:"2330", name:"台積電",     price:1082, change_pct: 2.15, volume_bn:182.4, vol_ratio:1.8, rsi:62.4, ma_align:true,  foreign_buy:true,  ai_score:87, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
+  { code:"2382", name:"廣達",       price: 322, change_pct: 1.86, volume_bn: 22.8, vol_ratio:1.4, rsi:64.5, ma_align:true,  foreign_buy:true,  ai_score:82, industry:"電子製造",   limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
+  { code:"2454", name:"聯發科",     price: 940, change_pct: 1.38, volume_bn: 28.7, vol_ratio:1.2, rsi:58.3, ma_align:true,  foreign_buy:true,  ai_score:79, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"2603", name:"長榮",       price: 218, change_pct: 2.83, volume_bn: 41.2, vol_ratio:2.1, rsi:68.9, ma_align:true,  foreign_buy:true,  ai_score:76, industry:"航運",       limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
+  { code:"2317", name:"鴻海",       price: 218, change_pct: 0.92, volume_bn: 34.1, vol_ratio:1.1, rsi:55.1, ma_align:true,  foreign_buy:true,  ai_score:74, industry:"電子製造",   limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"3711", name:"日月光投控", price: 158, change_pct: 1.29, volume_bn: 12.1, vol_ratio:1.3, rsi:57.3, ma_align:true,  foreign_buy:true,  ai_score:72, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"2308", name:"台達電",     price: 392, change_pct: 3.20, volume_bn: 12.3, vol_ratio:2.6, rsi:71.2, ma_align:true,  foreign_buy:false, ai_score:68, industry:"電子零組件", limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
+  { code:"2303", name:"聯電",       price:  52, change_pct: 0.97, volume_bn: 15.4, vol_ratio:1.0, rsi:52.8, ma_align:false, foreign_buy:true,  ai_score:58, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"2881", name:"富邦金",     price: 102, change_pct: 0.49, volume_bn:  8.2, vol_ratio:0.9, rsi:48.7, ma_align:false, foreign_buy:false, ai_score:55, industry:"金融",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"2886", name:"兆豐金",     price:  44, change_pct:-0.22, volume_bn:  5.4, vol_ratio:0.8, rsi:42.1, ma_align:false, foreign_buy:false, ai_score:48, industry:"金融",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"2412", name:"中華電",     price: 128, change_pct: 0.08, volume_bn:  3.1, vol_ratio:0.7, rsi:44.3, ma_align:false, foreign_buy:false, ai_score:45, industry:"電信",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"1301", name:"台塑",       price:  68, change_pct:-0.44, volume_bn:  5.2, vol_ratio:0.9, rsi:36.1, ma_align:false, foreign_buy:false, ai_score:38, industry:"石化",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  // 當沖熱門股
+  { code:"3034", name:"聯詠",       price: 465, change_pct: 4.72, volume_bn: 38.6, vol_ratio:4.2, rsi:74.8, ma_align:true,  foreign_buy:true,  ai_score:84, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
+  { code:"6770", name:"力積電",     price:  39, change_pct: 9.97, volume_bn: 56.3, vol_ratio:8.5, rsi:82.1, ma_align:true,  foreign_buy:false, ai_score:71, industry:"半導體",     limit_up:true,  limit_down:false, big_order_in:true,  gap_up:true  },
+  { code:"3481", name:"群創",       price:  18, change_pct: 9.89, volume_bn: 42.1, vol_ratio:7.3, rsi:79.4, ma_align:true,  foreign_buy:false, ai_score:65, industry:"光電",       limit_up:true,  limit_down:false, big_order_in:true,  gap_up:false },
+  { code:"2615", name:"萬海",       price:  98, change_pct:-9.91, volume_bn: 28.4, vol_ratio:6.1, rsi:21.3, ma_align:false, foreign_buy:false, ai_score:18, industry:"航運",       limit_up:false, limit_down:true,  big_order_in:false, gap_up:false },
+  { code:"2609", name:"陽明",       price:  72, change_pct:-9.86, volume_bn: 31.2, vol_ratio:5.8, rsi:19.7, ma_align:false, foreign_buy:false, ai_score:15, industry:"航運",       limit_up:false, limit_down:true,  big_order_in:false, gap_up:false },
+  { code:"8454", name:"富邦媒",     price: 622, change_pct: 6.32, volume_bn: 48.9, vol_ratio:9.1, rsi:76.3, ma_align:true,  foreign_buy:true,  ai_score:78, industry:"電商",       limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
+  { code:"3037", name:"欣興",       price: 168, change_pct: 3.85, volume_bn: 22.4, vol_ratio:3.4, rsi:65.2, ma_align:true,  foreign_buy:true,  ai_score:73, industry:"PCB",        limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
+  { code:"2376", name:"技嘉",       price: 312, change_pct: 5.41, volume_bn: 19.7, vol_ratio:5.2, rsi:72.1, ma_align:true,  foreign_buy:false, ai_score:69, industry:"電腦",       limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
+  { code:"2379", name:"瑞昱",       price: 688, change_pct:-1.72, volume_bn:  9.1, vol_ratio:1.1, rsi:38.4, ma_align:false, foreign_buy:false, ai_score:42, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"6669", name:"緯穎",       price:3450, change_pct: 2.08, volume_bn: 14.3, vol_ratio:1.6, rsi:61.8, ma_align:true,  foreign_buy:true,  ai_score:77, industry:"伺服器",     limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
+  { code:"2002", name:"中鋼",       price:  24, change_pct:-0.41, volume_bn:  6.8, vol_ratio:0.9, rsi:35.2, ma_align:false, foreign_buy:false, ai_score:36, industry:"鋼鐵",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"4968", name:"立積",       price: 185, change_pct: 1.64, volume_bn:  7.4, vol_ratio:1.5, rsi:53.9, ma_align:true,  foreign_buy:false, ai_score:60, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"3008", name:"大立光",     price:2280, change_pct:-0.87, volume_bn:  4.1, vol_ratio:0.8, rsi:39.6, ma_align:false, foreign_buy:false, ai_score:44, industry:"光電",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
+  { code:"2227", name:"裕日車",     price: 248, change_pct:-9.95, volume_bn: 18.3, vol_ratio:6.9, rsi:17.2, ma_align:false, foreign_buy:false, ai_score:12, industry:"汽車",       limit_up:false, limit_down:true,  big_order_in:false, gap_up:false },
+  { code:"6531", name:"愛普",       price: 895, change_pct:10.00, volume_bn: 12.8, vol_ratio:11.2,rsi:88.4, ma_align:true,  foreign_buy:false, ai_score:62, industry:"半導體",     limit_up:true,  limit_down:false, big_order_in:true,  gap_up:true  },
+];
+
+const INDUSTRIES = ["全部", "半導體", "電子製造", "電子零組件", "航運", "金融", "光電", "PCB", "伺服器", "電商", "電腦", "鋼鐵", "汽車", "電信", "石化"];
+
+const SORT_OPTIONS = [
+  { value: "ai_score",   label: "AI評分" },
+  { value: "change_pct", label: "漲跌幅" },
+  { value: "volume_bn",  label: "成交額" },
+  { value: "vol_ratio",  label: "量比" },
+  { value: "rsi",        label: "RSI" },
+];
+
+const WL_KEY  = "tw_radar_watchlist";
+const GRP_KEY = "tw_radar_wl_groups";
+
+interface WlGroup { id: string; name: string; stocks: { code: string; name: string; price: number; change_pct: number; industry: string }[] }
+
+const DEFAULT_GROUPS: WlGroup[] = [
+  { id:"g1", name:"群組1", stocks:[] },
+  { id:"g2", name:"群組2", stocks:[] },
+  { id:"g3", name:"群組3", stocks:[] },
+  { id:"g4", name:"群組4", stocks:[] },
+  { id:"g5", name:"群組5", stocks:[] },
+];
+
+function loadWL(): string[] {
+  try { return JSON.parse(localStorage.getItem(WL_KEY) || "[]"); } catch { return []; }
+}
+
+function loadGroups(): WlGroup[] {
+  try { return JSON.parse(localStorage.getItem(GRP_KEY) || "null") || DEFAULT_GROUPS; } catch { return DEFAULT_GROUPS; }
+}
+
+function saveGroups(g: WlGroup[]) {
+  localStorage.setItem(GRP_KEY, JSON.stringify(g));
+}
+
+// ── 群組選擇彈窗 ─────────────────────────────────────────────
+function GroupPickerModal({
+  stock,
+  onClose,
+  onPicked,
+}: {
+  stock: Stock;
+  onClose: () => void;
+  onPicked: (stock: Stock) => void;
+}) {
+  const groups = loadGroups();
+  const addToGroup = (gId: string) => {
+    const updated = groups.map(g => {
+      if (g.id !== gId) return g;
+      if (g.stocks.some(s => s.code === stock.code)) return g;
+      return {
+        ...g,
+        stocks: [...g.stocks, {
+          code: stock.code, name: stock.name,
+          price: stock.price, change_pct: stock.change_pct, industry: stock.industry,
+        }],
+      };
+    });
+    saveGroups(updated);
+    onPicked(stock);
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, background:"#00000088", zIndex:1000,
+        display:"flex", alignItems:"center", justifyContent:"center",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#111118", border:"1px solid #3a3a5a", borderRadius:12,
+          padding:"20px 24px", minWidth:260, boxShadow:"0 8px 32px #000a",
+        }}
+      >
+        <div style={{ fontSize:14, fontWeight:700, color:"#e8e8f0", marginBottom:4 }}>
+          加入自選收藏
+        </div>
+        <div style={{ fontSize:12, color:"#8888aa", marginBottom:14 }}>
+          {stock.name} ({stock.code}) → 選擇群組
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {groups.map(g => (
+            <button
+              key={g.id}
+              onClick={() => addToGroup(g.id)}
+              style={{
+                background:"#1a1a2e", border:"1px solid #2a2a4a",
+                borderRadius:8, padding:"10px 14px", cursor:"pointer",
+                color:"#c8c8e8", fontSize:13, textAlign:"left",
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background="#22225a")}
+              onMouseLeave={e => (e.currentTarget.style.background="#1a1a2e")}
+            >
+              <span>⭐ {g.name}</span>
+              <span style={{ fontSize:11, color:"#555570" }}>{g.stocks.length} 檔</span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            marginTop:12, width:"100%", background:"transparent",
+            border:"1px solid #2a2a3a", borderRadius:6,
+            color:"#555570", fontSize:12, padding:"6px 0", cursor:"pointer",
+          }}
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function scoreColor(s: number) {
+  if (s >= 80) return "#ff4d4d";
+  if (s >= 65) return "#f5a623";
+  if (s >= 50) return "#8888aa";
+  if (s >= 35) return "#3d7eff";
+  return "#00c076";
+}
+function scoreLabel(s: number) {
+  if (s >= 80) return "強力買進";
+  if (s >= 65) return "買進";
+  if (s >= 50) return "觀望";
+  if (s >= 35) return "減碼";
+  return "賣出";
+}
+function volRatioColor(r: number) {
+  if (r >= 5) return "#ff4d4d";
+  if (r >= 3) return "#f5a623";
+  if (r >= 1.5) return "#e8e8f0";
+  return "#555570";
+}
+
+function Tag({ label, val, color }: { label: string; val: string; color: string }) {
+  return (
+    <div style={{ display:"flex", gap:4, alignItems:"center", background:"#1a1a24", borderRadius:5, padding:"3px 7px" }}>
+      <span style={{ fontSize:11, color:"#8888aa" }}>{label}</span>
+      <span style={{ fontSize:12, fontWeight:600, color }}>{val}</span>
+    </div>
+  );
+}
+
+function Chip({ label, active, onClick, accent }: { label:string; active:boolean; onClick:()=>void; accent?:string }) {
+  const c = accent ?? "#00c076";
+  return (
+    <button onClick={onClick} style={{
+      padding:"4px 12px", borderRadius:16, fontSize:12, cursor:"pointer",
+      background: active ? `${c}22` : "#1a1a24",
+      color: active ? c : "#8888aa",
+      border:`1px solid ${active ? c : "#2a2a3a"}`,
+      fontWeight: active ? 600 : 400,
+    }}>
+      {active ? "✓ " : ""}{label}
+    </button>
+  );
+}
+
+function GroupLabel({ label }: { label: string }) {
+  return <span style={{ fontSize:11, color:"#444460", letterSpacing:1, whiteSpace:"nowrap", padding:"0 4px" }}>{label}</span>;
+}
+
+export default function ScreenerPage() {
+  const isMobile = useIsMobile();
+  const [industry,      setIndustry]      = useState("全部");
+  const [sortBy,        setSortBy]        = useState("ai_score");
+  const [filterMA,      setFilterMA]      = useState(false);
+  const [filterForeign, setFilterForeign] = useState(false);
+  const [filterRSI,     setFilterRSI]     = useState(false);
+  // 當沖特化
+  const [filterVolume,  setFilterVolume]  = useState(false);
+  const [filterLimitUp, setFilterLimitUp] = useState(false);
+  const [filterLimitDn, setFilterLimitDn] = useState(false);
+  const [filterBigOrder,setFilterBigOrder]= useState(false);
+  const [filterGapUp,   setFilterGapUp]   = useState(false);
+  const [filterOverbought,setFilterOverbought] = useState(false);
+  const [filterOversold,  setFilterOversold]   = useState(false);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [tab, setTab] = useState<"scan" | "watchlist">("scan");
+  const [pickerStock, setPickerStock] = useState<Stock | null>(null);
+
+  useEffect(() => { setWatchlist(loadWL()); }, []);
+
+  const handleStarClick = (s: Stock) => {
+    if (watchlist.includes(s.code)) {
+      // 已收藏 → 直接移除
+      const next = watchlist.filter(c => c !== s.code);
+      setWatchlist(next);
+      localStorage.setItem(WL_KEY, JSON.stringify(next));
+    } else {
+      // 未收藏 → 開彈窗選群組
+      setPickerStock(s);
+    }
+  };
+
+  const handleGroupPicked = (stock: Stock) => {
+    // 加入 screener WL pool（讓按鈕變 ★）
+    const next = [...watchlist, stock.code];
+    setWatchlist(next);
+    localStorage.setItem(WL_KEY, JSON.stringify(next));
+    setPickerStock(null);
+  };
+
+  let filtered = DEMO_STOCKS;
+  if (tab === "watchlist")     filtered = filtered.filter(s => watchlist.includes(s.code));
+  if (industry !== "全部")     filtered = filtered.filter(s => s.industry === industry);
+  if (filterMA)                filtered = filtered.filter(s => s.ma_align);
+  if (filterForeign)           filtered = filtered.filter(s => s.foreign_buy);
+  if (filterRSI)               filtered = filtered.filter(s => s.rsi >= 50 && s.rsi < 70);
+  if (filterVolume)            filtered = filtered.filter(s => s.vol_ratio >= 3);
+  if (filterLimitUp)           filtered = filtered.filter(s => s.limit_up);
+  if (filterLimitDn)           filtered = filtered.filter(s => s.limit_down);
+  if (filterBigOrder)          filtered = filtered.filter(s => s.big_order_in);
+  if (filterGapUp)             filtered = filtered.filter(s => s.gap_up);
+  if (filterOverbought)        filtered = filtered.filter(s => s.rsi >= 70);
+  if (filterOversold)          filtered = filtered.filter(s => s.rsi <= 30);
+
+  // 漲跌停排行優先顯示時按量比排
+  const effectiveSort = filterLimitUp || filterLimitDn || filterVolume ? "vol_ratio" : sortBy;
+  filtered = [...filtered].sort((a, b) =>
+    (b[effectiveSort as keyof Stock] as number) - (a[effectiveSort as keyof Stock] as number)
+  );
+
+  return (
+    <div className="main-scroll" style={{ flex:1, overflowY:"auto", padding: isMobile ? "8px 8px 72px" : "16px 20px" }}>
+      {pickerStock && (
+        <GroupPickerModal
+          stock={pickerStock}
+          onClose={() => setPickerStock(null)}
+          onPicked={handleGroupPicked}
+        />
+      )}
+      <h2 style={{ fontSize:18, fontWeight:700, color:"#e8e8f0", marginBottom:14 }}>📊 選股工作流</h2>
+
+      {/* Tab */}
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+        {(["scan","watchlist"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{
+            padding:"6px 18px", borderRadius:20, fontSize:13, fontWeight:600, cursor:"pointer",
+            background: tab === t ? "#00c076" : "#1a1a24",
+            color: tab === t ? "#000" : "#8888aa",
+            border:"1px solid " + (tab === t ? "#00c076" : "#2a2a3a"),
+          }}>
+            {t === "scan" ? `因子掃描 (${DEMO_STOCKS.length})` : `自選股池 (${watchlist.length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 篩選列 ── */}
+      <div style={{
+        background:"#111118", border:"1px solid #2a2a3a", borderRadius:10,
+        padding:"12px 14px", marginBottom:14,
+        display:"flex", flexWrap:"wrap", gap:8, alignItems:"center",
+      }}>
+        {/* 產業 + 排序 */}
+        <select value={industry} onChange={e => setIndustry(e.target.value)} style={{
+          background:"#1a1a24", border:"1px solid #2a2a3a", borderRadius:6,
+          color:"#e8e8f0", fontSize:13, padding:"5px 8px",
+        }}>
+          {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{
+          background:"#1a1a24", border:"1px solid #2a2a3a", borderRadius:6,
+          color:"#e8e8f0", fontSize:13, padding:"5px 8px",
+        }}>
+          {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}排序</option>)}
+        </select>
+
+        {/* 分隔 */}
+        <div style={{ width:1, height:20, background:"#2a2a3a", margin:"0 4px" }} />
+
+        {/* 技術面 */}
+        <GroupLabel label="技術▸" />
+        <Chip label="均線多排" active={filterMA}      onClick={() => setFilterMA(v => !v)} />
+        <Chip label="外資買超" active={filterForeign} onClick={() => setFilterForeign(v => !v)} />
+        <Chip label="RSI 50-70" active={filterRSI}    onClick={() => setFilterRSI(v => !v)} />
+
+        {/* 分隔 */}
+        <div style={{ width:1, height:20, background:"#2a2a3a", margin:"0 4px" }} />
+
+        {/* 當沖特化 */}
+        <GroupLabel label="當沖▸" />
+        <Chip label="🔥 量爆 3x+"  active={filterVolume}   onClick={() => setFilterVolume(v => !v)}   accent="#f5a623" />
+        <Chip label="🚀 漲停"       active={filterLimitUp}  onClick={() => { setFilterLimitUp(v => !v); setFilterLimitDn(false); }} accent="#ff4d4d" />
+        <Chip label="💀 跌停"       active={filterLimitDn}  onClick={() => { setFilterLimitDn(v => !v); setFilterLimitUp(false); }} accent="#00c076" />
+        <Chip label="💰 大單流入"   active={filterBigOrder} onClick={() => setFilterBigOrder(v => !v)} accent="#cc44ff" />
+        <Chip label="⬆ 開盤跳空"   active={filterGapUp}    onClick={() => setFilterGapUp(v => !v)}    accent="#3d7eff" />
+        <Chip label="📈 超買動能"   active={filterOverbought} onClick={() => { setFilterOverbought(v=>!v); setFilterOversold(false); }} accent="#ff6b35" />
+        <Chip label="📉 超賣反彈"   active={filterOversold}   onClick={() => { setFilterOversold(v=>!v); setFilterOverbought(false); }} accent="#3d7eff" />
+
+        <span style={{ marginLeft:"auto", fontSize:12, color:"#8888aa" }}>共 {filtered.length} 檔</span>
+      </div>
+
+      {/* ── 卡片列表 ── */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign:"center", color:"#8888aa", padding:"60px 0", fontSize:15 }}>
+          {tab === "watchlist" ? "自選股池是空的，從「因子掃描」點 ☆ 加入" : "沒有符合條件的股票"}
+        </div>
+      ) : (
+        <div style={{
+          display:"grid",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))",
+          gap:12,
+        }}>
+          {filtered.map(s => {
+            const inWatch = watchlist.includes(s.code);
+            const up = s.change_pct >= 0;
+            const isLimit = s.limit_up || s.limit_down;
+            return (
+              <div key={s.code} style={{
+                background:"#111118",
+                border:`1px solid ${s.limit_up ? "#ff4d4d55" : s.limit_down ? "#00c07655" : "#2a2a3a"}`,
+                borderRadius:10, padding:"14px 16px",
+                display:"flex", flexDirection:"column", gap:10,
+                boxShadow: s.limit_up ? "0 0 12px #ff4d4d22" : s.limit_down ? "0 0 12px #00c07622" : "none",
+              }}>
+                {/* Header */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                    <span style={{ fontWeight:700, fontSize:16, color:"#e8e8f0" }}>{s.name}</span>
+                    <span style={{ fontSize:13, color:"#8888aa" }}>{s.code}</span>
+                    <span style={{ fontSize:11, padding:"2px 6px", borderRadius:4, background:"#1a1a2e", color:"#8888aa" }}>{s.industry}</span>
+                    {s.limit_up  && <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background:"#ff4d4d33", color:"#ff4d4d", fontWeight:700 }}>漲停</span>}
+                    {s.limit_down && <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background:"#00c07633", color:"#00c076", fontWeight:700 }}>跌停</span>}
+                    {s.gap_up    && !isLimit && <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background:"#3d7eff33", color:"#3d7eff" }}>跳空</span>}
+                  </div>
+                  <button onClick={() => handleStarClick(s)} style={{
+                    background: inWatch ? "#003d20" : "#1a1a24",
+                    border:`1px solid ${inWatch ? "#00c076" : "#2a2a3a"}`,
+                    borderRadius:6, color: inWatch ? "#00c076" : "#8888aa",
+                    fontSize:12, padding:"3px 8px", cursor:"pointer", flexShrink:0,
+                  }}>
+                    {inWatch ? "★ 自選" : "☆ 加入"}
+                  </button>
+                </div>
+
+                {/* 價格 */}
+                <div style={{ display:"flex", gap:16, alignItems:"baseline" }}>
+                  <span style={{ fontSize:22, fontWeight:700, color:"#e8e8f0" }}>{s.price.toLocaleString()}</span>
+                  <span style={{ fontSize:15, color: up ? "#ff4d4d" : "#00c076", fontWeight:600 }}>
+                    {up ? "▲" : "▼"} {Math.abs(s.change_pct).toFixed(2)}%
+                  </span>
+                  <span style={{ fontSize:13, color:"#8888aa", marginLeft:"auto" }}>量 {s.volume_bn.toFixed(1)}億</span>
+                </div>
+
+                {/* 指標標籤 */}
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <Tag label="RSI"   val={s.rsi.toFixed(1)} color={s.rsi>=70?"#ff4d4d":s.rsi<=30?"#3d7eff":"#f5a623"} />
+                  <Tag label="量比"  val={`${s.vol_ratio.toFixed(1)}x`} color={volRatioColor(s.vol_ratio)} />
+                  <Tag label="均線"  val={s.ma_align?"多排":"空排"}  color={s.ma_align?"#00c076":"#ff4d4d"} />
+                  <Tag label="外資"  val={s.foreign_buy?"連買":"流出"} color={s.foreign_buy?"#00c076":"#ff4d4d"} />
+                  {s.big_order_in && <Tag label="大單" val="流入" color="#cc44ff" />}
+                </div>
+
+                {/* AI評分 */}
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ flex:1, height:6, background:"#1a1a24", borderRadius:3, overflow:"hidden" }}>
+                    <div style={{ width:`${s.ai_score}%`, height:"100%", background:scoreColor(s.ai_score), borderRadius:3 }} />
+                  </div>
+                  <span style={{ fontSize:13, color:scoreColor(s.ai_score), fontWeight:700, width:28, textAlign:"right" }}>{s.ai_score}</span>
+                  <span style={{ fontSize:12, color:scoreColor(s.ai_score), width:54 }}>{scoreLabel(s.ai_score)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{
+        marginTop:20, padding:"12px 14px", borderRadius:8,
+        background:"#0d0d15", border:"1px solid #2a2a3a", fontSize:12, color:"#8888aa", lineHeight:1.8,
+      }}>
+        <span style={{ color:"#f5a623", fontWeight:600 }}>⚠️ 目前為 Demo 資料</span>
+        　Data Agent 上線後每日 14:30 自動掃描全市場 1,800+ 檔，含即時漲跌停、大單追蹤、量比警示。
+      </div>
+    </div>
+  );
+}

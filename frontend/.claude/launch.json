@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "taiwan-stock-radar",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "logs", "-f", "frontend"],
+      "port": 3000,
+      "autoPort": false
+    }
+  ]
+}
