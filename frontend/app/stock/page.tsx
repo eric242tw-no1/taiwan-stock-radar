@@ -27,6 +27,7 @@ interface Indicator {
   ticker: string; trade_date: string; close: number; volume: number;
   rsi14: number; macd: number; macd_signal: number; macd_hist: number;
   k: number; d: number; atr14: number;
+  ma20?: number; ma20_bias?: number; bias_pct?: number;
 }
 interface OhlcBar { time: string; open: number; high: number; low: number; close: number; volume: number; }
 interface ChipLatest { foreign: number; trust: number; dealer: number; date: string; }
@@ -76,7 +77,32 @@ interface SentimentData {
   updated_at: string;
 }
 
-// ── AI 評分引擎 ───────────────────────────────────────────────
+// ── AI 分析型別 ───────────────────────────────────────────────
+interface AiPanelist {
+  name: string; score: number; verdict: "看多" | "中性" | "看空";
+  hits: string[]; warnings: string[]; misses: string[]; comment: string;
+}
+interface AiIcMemo {
+  bull: { prob: number; target: number; assumption: string; trigger?: string };
+  base: { prob: number; target: number; assumption: string };
+  bear: { prob: number; target: number; assumption: string };
+  expected_value: number; risk_reward: number;
+}
+interface AiResult {
+  score: number;
+  action: "買進" | "持有" | "觀望" | "減倉" | "賣出";
+  ideal_entry: number; alt_entry: number;
+  stop_loss: number; take_profit: number;
+  summary: string;
+  panel: AiPanelist[];
+  panel_summary: { bullish: number; neutral: number; bearish: number };
+  ic_memo: AiIcMemo;
+  debate: { bull_points: string[]; bear_points: string[]; verdict: string } | null;
+  key_risks: string[];
+  source?: string; _cached?: boolean;
+}
+
+// ── AI 評分引擎（rule-based fallback）────────────────────────
 interface ScoreSet {
   tech: number; chip: number; fundamental: number;
   macro: number; risk: number; composite: number;
@@ -508,7 +534,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
   const [subEnabled, setSubEnabled] = useState<Set<string>>(new Set(["vol", "rsi"]));
   const [loading, setLoading]   = useState(false);
   const [indErr,  setIndErr]    = useState("");
-  const [aiScores, setAiScores] = useState<(ScoreSet & { source?: string; suggestion?: string; summary?: string; key_points?: string[]; cached?: boolean }) | null>(null);
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [sentiment, setSentiment] = useState<{ ptt: SentimentData | null; cmoney: SentimentData | null } | null>(null);
 
   // ── 即時報價（10秒更新）────────────────────────────────
@@ -544,14 +570,14 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
       .catch(() => setIndErr("等收盤後計算（每日15:05更新）"));
   }, [symbol]);
 
-  // ── AI 分析（Claude API，快取至隔日 09:00）────────────────
+  // ── AI 深度分析（Claude API，快取至隔日 09:00）───────────
   useEffect(() => {
-    setAiScores(null);
+    setAiResult(null);
     fetch(`${API}/api/stock/${symbol}/ai-analysis`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        if (d && d.source !== "rule_based" && d.composite != null) {
-          setAiScores(d);
+        if (d && d.source !== "rule_based" && d.score != null) {
+          setAiResult(d as AiResult);
         }
       })
       .catch(() => {});
@@ -602,15 +628,17 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
     : quote.vol_ratio >= 1.5 ? "#f5a623"
     : "#8888aa";
 
-  const scores = aiScores ?? computeScores(ind, chip, quote);
-  const scoreSource = aiScores?.source === "claude" ? "AI 分析" : "規則計算";
+  const ruleScores = computeScores(ind, chip, quote);
+  const hasAi  = aiResult !== null;
+  const composite = hasAi ? aiResult.score : ruleScores.composite;
+  const scoreSource = hasAi ? "Claude AI" : "規則計算";
   const hasData = ind !== null || chip !== null;
   const scoreDims = [
-    { label: "技術", score: ind   ? scores.tech        : null, color: "#3d7eff" },
-    { label: "籌碼", score: chip  ? scores.chip        : null, color: "#f5a623" },
-    { label: "基本", score: ind   ? scores.fundamental : null, color: "#cc44ff" },
-    { label: "宏觀", score:                scores.macro,        color: "#00c076" },
-    { label: "風控", score: (ind||quote) ? scores.risk  : null, color: "#ff6b35" },
+    { label: "技術", score: ind        ? ruleScores.tech        : null, color: "#3d7eff" },
+    { label: "籌碼", score: chip       ? ruleScores.chip        : null, color: "#f5a623" },
+    { label: "基本", score: ind        ? ruleScores.fundamental : null, color: "#cc44ff" },
+    { label: "宏觀", score:              ruleScores.macro,               color: "#00c076" },
+    { label: "風控", score: (ind||quote)? ruleScores.risk        : null, color: "#ff6b35" },
   ] as const;
 
   return (
@@ -783,36 +811,55 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
 
           {/* AI Score 卡片 */}
           <div style={{
-            background: "#0d0d18", border: "1px solid #2a2a3a", borderRadius: 8, padding: "14px 16px",
+            background: "#0d0d18", border: `1px solid ${hasAi ? "#00c07633" : "#2a2a3a"}`, borderRadius: 8, padding: "14px 16px",
             display: "flex", flexDirection: "column", alignItems: "center",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: "#555570", letterSpacing: 1, textTransform: "uppercase" }}>AI 綜合評分</div>
               <span style={{
                 fontSize: 9, padding: "1px 5px", borderRadius: 3,
-                background: aiScores?.source === "claude" ? "#1a2a1a" : "#1a1a2a",
-                color: aiScores?.source === "claude" ? "#00c076" : "#555570",
-                border: `1px solid ${aiScores?.source === "claude" ? "#00c07644" : "#2a2a3a"}`,
+                background: hasAi ? "#1a2a1a" : "#1a1a2a",
+                color: hasAi ? "#00c076" : "#555570",
+                border: `1px solid ${hasAi ? "#00c07644" : "#2a2a3a"}`,
               }}>{scoreSource}</span>
             </div>
+
+            {/* 圓形評分 */}
             <div style={{
               width: 96, height: 96, borderRadius: "50%", position: "relative",
-              background: hasData ? `conic-gradient(${scoreColor(scores.composite)} 0% ${scores.composite}%, #1a1a2a ${scores.composite}% 100%)` : "#1a1a2a",
-              boxShadow: hasData ? `0 0 22px ${scoreColor(scores.composite)}44` : "none",
+              background: hasData ? `conic-gradient(${scoreColor(composite)} 0% ${composite}%, #1a1a2a ${composite}% 100%)` : "#1a1a2a",
+              boxShadow: hasData ? `0 0 22px ${scoreColor(composite)}44` : "none",
             }}>
               <div style={{
                 position: "absolute", inset: 7, borderRadius: "50%", background: "#0d0d18",
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
               }}>
-                <div style={{ fontSize: 26, fontWeight: 700, color: hasData ? scoreColor(scores.composite) : "#333350", lineHeight: 1 }}>
-                  {hasData ? scores.composite : "--"}
+                <div style={{ fontSize: 26, fontWeight: 700, color: hasData ? scoreColor(composite) : "#333350", lineHeight: 1 }}>
+                  {hasData ? composite : "--"}
                 </div>
                 <div style={{ fontSize: 10, color: "#555570" }}>/ 100</div>
               </div>
             </div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: hasData ? scoreColor(scores.composite) : "#333350", margin: "7px 0 10px" }}>
-              {hasData ? scoreLabel(scores.composite) : "載入中"}
+
+            {/* 操作建議標籤 */}
+            <div style={{ margin: "8px 0 10px", display: "flex", gap: 6, alignItems: "center" }}>
+              {hasAi ? (
+                <span style={{
+                  fontSize: 13, fontWeight: 800, padding: "3px 12px", borderRadius: 5,
+                  background: { "買進":"#1a3a1a","強勢做多":"#1a3a1a","持有":"#1a2a2a","觀望":"#1a1a2a","減倉":"#2a1a1a","賣出":"#3a0000" }[aiResult.action] ?? "#1a1a2a",
+                  color: { "買進":"#00c076","強勢做多":"#00ff88","持有":"#3d7eff","觀望":"#8888aa","減倉":"#f5a623","賣出":"#ff4d4d" }[aiResult.action] ?? "#8888aa",
+                  border: `1px solid currentColor`,
+                }}>
+                  {aiResult.action}
+                </span>
+              ) : (
+                <span style={{ fontSize: 12, fontWeight: 600, color: hasData ? scoreColor(composite) : "#333350" }}>
+                  {hasData ? scoreLabel(composite) : "載入中"}
+                </span>
+              )}
             </div>
+
+            {/* 維度分數條 */}
             <div style={{ width: "100%" }}>
               {scoreDims.map(({ label, score, color }) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
@@ -832,14 +879,38 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                 </div>
               ))}
             </div>
-            {aiScores?.summary && (
+
+            {/* AI 進出場價位 */}
+            {hasAi && (
               <div style={{ marginTop: 10, width: "100%", borderTop: "1px solid #1a1a2a", paddingTop: 10 }}>
-                {aiScores.suggestion && (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor(aiScores.composite), marginBottom: 5 }}>
-                    建議：{aiScores.suggestion}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: "#8888aa", lineHeight: 1.6 }}>{aiScores.summary}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {[
+                    { label: "理想進場", val: aiResult.ideal_entry, color: "#00c076" },
+                    { label: "次佳進場", val: aiResult.alt_entry,   color: "#3d7eff" },
+                    { label: "停損",     val: aiResult.stop_loss,   color: "#ff4d4d" },
+                    { label: "目標價",   val: aiResult.take_profit, color: "#f5a623" },
+                  ].map(({ label, val, color }) => (
+                    <div key={label} style={{ background: "#111118", borderRadius: 5, padding: "5px 8px" }}>
+                      <div style={{ fontSize: 10, color: "#555570" }}>{label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>
+                        {val ? val.toLocaleString() : "---"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AI summary */}
+            {hasAi && aiResult.summary && (
+              <div style={{ marginTop: 10, width: "100%", borderTop: "1px solid #1a1a2a", paddingTop: 8 }}>
+                <div style={{ fontSize: 11, color: "#8888aa", lineHeight: 1.7 }}>{aiResult.summary}</div>
+              </div>
+            )}
+
+            {!hasAi && (
+              <div style={{ marginTop: 8, fontSize: 10, color: "#444460", textAlign: "center" }}>
+                設定 ANTHROPIC_API_KEY 啟用 Claude 深度分析
               </div>
             )}
           </div>
@@ -909,6 +980,35 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   color={ind.k >= 80 ? "#ff4d4d" : ind.k <= 20 ? "#00c076" : "#e8e8f0"} />
                 <MetricRow label="D" value={ind.d.toFixed(1)} color="#8888aa" />
                 <MetricRow label="ATR (14)" sub="日均波幅" value={ind.atr14.toFixed(1)} color="#8888aa" />
+                {ind.ma20 != null && (
+                  <MetricRow label="MA20" sub="20日均線" value={`$${ind.ma20.toLocaleString()}`} color="#3d7eff" />
+                )}
+                {ind.ma20_bias != null && (() => {
+                  const bias = ind.ma20_bias!;
+                  const pct  = ind.bias_pct ?? 50;
+                  const biasColor = bias > 10 ? "#ff4d4d" : bias < -5 ? "#00c076" : "#f5a623";
+                  const pctLabel  = pct >= 85 ? "過熱" : pct >= 70 ? "偏高" : pct <= 15 ? "過冷" : pct <= 30 ? "偏低" : "中性";
+                  const pctColor  = pct >= 85 ? "#ff4d4d" : pct >= 70 ? "#f5a623" : pct <= 15 ? "#00c076" : pct <= 30 ? "#4dd0e1" : "#8888aa";
+                  return (
+                    <>
+                      <MetricRow
+                        label="MA20 乖離率"
+                        sub={`偏離均線`}
+                        value={(bias >= 0 ? "+" : "") + bias.toFixed(2) + "%"}
+                        color={biasColor}
+                      />
+                      <div style={{ margin: "2px 0 8px", display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1, height: 3, background: "#1a1a2a", borderRadius: 2, position: "relative" }}>
+                          <div style={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 2, background: pctColor, width: `${pct}%`, transition: "width 0.4s" }} />
+                          <div style={{ position: "absolute", left: "50%", top: -1, width: 1, height: 5, background: "#444460" }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: pctColor, whiteSpace: "nowrap" }}>
+                          {pct.toFixed(0)}百分位 · {pctLabel}
+                        </span>
+                      </div>
+                    </>
+                  );
+                })()}
                 <div style={{ marginTop: 8, fontSize: 18, color: "#444460" }}>
                   資料日期：{ind.trade_date}｜每日15:05更新
                 </div>
@@ -977,6 +1077,95 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
 
         </div>
       </div>
+
+      {/* ── AI 深度分析（評審團 + IC備忘錄）── */}
+      {hasAi && (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+
+          {/* 評審團 */}
+          <Card title={`AI 評審團（${aiResult.panel_summary.bullish}多 ${aiResult.panel_summary.neutral}中 ${aiResult.panel_summary.bearish}空）`}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {aiResult.panel.map(p => {
+                const vc = p.verdict === "看多" ? "#ff4d4d" : p.verdict === "看空" ? "#00c076" : "#8888aa";
+                return (
+                  <div key={p.name} style={{ background: "#0d0d15", borderRadius: 6, padding: "8px 10px", border: `1px solid ${vc}22` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#c8c8d8" }}>{p.name}</span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: vc, padding: "1px 6px", border: `1px solid ${vc}44`, borderRadius: 3 }}>{p.verdict}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: scoreColor(p.score) }}>{p.score}</span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#8888aa", lineHeight: 1.5 }}>{p.comment}</div>
+                    {p.hits.length > 0 && (
+                      <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {p.hits.map((h, i) => <span key={i} style={{ fontSize: 10, color: "#ff4d4d", background: "#3d000022", padding: "1px 5px", borderRadius: 3 }}>✓ {h}</span>)}
+                      </div>
+                    )}
+                    {p.misses.length > 0 && (
+                      <div style={{ marginTop: 3, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {p.misses.map((m, i) => <span key={i} style={{ fontSize: 10, color: "#555570", background: "#1a1a2a", padding: "1px 5px", borderRadius: 3 }}>✗ {m}</span>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* IC 備忘錄 + 辯論 + 風險 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Card title="IC 投委會備忘錄">
+              {[
+                { key: "bull" as const, label: "多頭情景", color: "#ff4d4d" },
+                { key: "base" as const, label: "基本情景", color: "#f5a623" },
+                { key: "bear" as const, label: "空頭情景", color: "#00c076" },
+              ].map(({ key, label, color }) => {
+                const s = aiResult.ic_memo[key];
+                return (
+                  <div key={key} style={{ marginBottom: 10, borderLeft: `3px solid ${color}`, paddingLeft: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, color, fontWeight: 700 }}>{label}</span>
+                      <span style={{ fontSize: 12, color: "#8888aa" }}>機率 {s.prob}% ｜ 目標 <span style={{ color, fontWeight: 700 }}>{s.target}</span></span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#8888aa", lineHeight: 1.5 }}>{s.assumption}</div>
+                    {"trigger" in s && s.trigger && (
+                      <div style={{ fontSize: 10, color: "#555570", marginTop: 2 }}>觸發：{s.trigger}</div>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ borderTop: "1px solid #1a1a2a", paddingTop: 8, display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, color: "#8888aa" }}>期望值 <span style={{ color: "#f5a623", fontWeight: 700 }}>{aiResult.ic_memo.expected_value}</span></span>
+                <span style={{ fontSize: 12, color: "#8888aa" }}>風報比 <span style={{ color: "#3d7eff", fontWeight: 700 }}>{aiResult.ic_memo.risk_reward?.toFixed(2)}</span></span>
+              </div>
+            </Card>
+
+            {aiResult.debate && (
+              <Card title="多空辯論">
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: "#ff4d4d", fontWeight: 700, marginBottom: 4 }}>看多論點</div>
+                  {aiResult.debate.bull_points.map((p, i) => <div key={i} style={{ fontSize: 11, color: "#8888aa", marginBottom: 3 }}>▲ {p}</div>)}
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: "#00c076", fontWeight: 700, marginBottom: 4 }}>看空論點</div>
+                  {aiResult.debate.bear_points.map((p, i) => <div key={i} style={{ fontSize: 11, color: "#8888aa", marginBottom: 3 }}>▼ {p}</div>)}
+                </div>
+                <div style={{ borderTop: "1px solid #1a1a2a", paddingTop: 8, fontSize: 11, color: "#c8c8d8" }}>⚖️ {aiResult.debate.verdict}</div>
+              </Card>
+            )}
+
+            <Card title="主要風險">
+              {aiResult.key_risks.map((r, i) => (
+                <div key={i} style={{ fontSize: 12, color: "#8888aa", padding: "5px 0", borderBottom: "1px solid #1a1a2a" }}>
+                  ⚠️ {r}
+                </div>
+              ))}
+            </Card>
+          </div>
+
+        </div>
+      )}
 
       {/* ── 相關個股 ── */}
       <Card title="同類股">

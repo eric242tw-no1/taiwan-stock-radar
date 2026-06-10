@@ -1,20 +1,67 @@
 """
-持倉截圖辨識 API
+持倉追蹤 API
 ---
-目前模式（B方案）：使用 pytesseract 本地 OCR + 正則解析元大庫存截圖
-未來升級：在 .env 加入 ANTHROPIC_API_KEY=sk-ant-xxx 後自動切換為 Claude Vision
+CRUD: GET/POST /api/portfolio, PUT/DELETE /api/portfolio/{id}
+截圖辨識: POST /api/portfolio/parse-screenshot
 """
 
 import os
 import re
 import io
 import logging
+from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
+from pydantic import BaseModel
 from PIL import Image
+
+from services.portfolio_service import (
+    list_holdings, add_holding, update_holding, delete_holding,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
+
+
+# ─── Pydantic models ─────────────────────────────────────────────────────────
+
+class HoldingIn(BaseModel):
+    code: str
+    name: str = ""
+    qty: int
+    cost: float
+    buy_date: Optional[str] = None
+    note: str = ""
+
+
+# ─── CRUD endpoints ──────────────────────────────────────────────────────────
+
+@router.get("")
+async def get_portfolio():
+    return {"holdings": list_holdings()}
+
+
+@router.post("", status_code=201)
+async def create_holding(body: HoldingIn):
+    row = add_holding(body.code, body.name, body.qty, body.cost, body.buy_date, body.note)
+    return row
+
+
+@router.put("/{holding_id}")
+async def edit_holding(holding_id: int, body: HoldingIn):
+    row = update_holding(holding_id, body.code, body.name, body.qty, body.cost, body.buy_date, body.note)
+    if row is None:
+        raise HTTPException(status_code=404, detail="持倉不存在")
+    return row
+
+
+@router.delete("/{holding_id}")
+async def remove_holding(holding_id: int):
+    ok = delete_holding(holding_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="持倉不存在")
+    return {"deleted": holding_id}
 
 # ─── 升級開關：有 key 就用 Claude Vision，沒有就用 pytesseract ───────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

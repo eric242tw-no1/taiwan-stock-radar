@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "taiwan-stock-radar",
-      "runtimeExecutable": "docker",
-      "runtimeArgs": ["compose", "logs", "-f", "frontend"],
-      "port": 3000,
-      "autoPort": false
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3001"],
+      "port": 3001
     }
   ]
 }

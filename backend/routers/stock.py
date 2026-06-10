@@ -1,11 +1,13 @@
+import logging
 from fastapi import APIRouter
 from services.stock_quote_fetcher import fetch_stock_quote
 from services.ohlcv_service import fetch_ohlcv
 from services.finmind_fetcher import fetch_stock_chip, fetch_margin
 from services.indicator_service import get_indicators
-from services.ai_analysis_service import get_ai_analysis
 from services.ptt_sentiment import get_ptt_sentiment
 from services.cmoney_sentiment import get_cmoney_sentiment
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
 
@@ -65,45 +67,20 @@ async def get_stock_ohlcv(symbol: str, period: str = "90d"):
 @router.get("/{symbol}/ai-analysis")
 async def get_stock_ai_analysis(symbol: str):
     """
-    個股 AI 評分：Claude 分析技術 + 籌碼 + 報價，結果快取到 Redis（TTL 至隔日 09:00）
-    若 ANTHROPIC_API_KEY 未設，回傳 source=rule_based（前端自行計算）
+    個股 AI 深度分析：10位分析師評審 + IC備忘錄 + 情景目標價 + 進出場建議
+    資料來源：FinMind 120日行情 + 籌碼，模型：Claude Sonnet
+    快取到隔日 09:00；無 API Key 回傳 source=rule_based
     """
     sym = symbol.upper()
-    ticker = f"{sym}.TW"
-
-    ind  = get_indicators(ticker)
-    chip_data = None
     try:
-        from services.finmind_fetcher import fetch_stock_chip, fetch_margin
-        chip_raw  = fetch_stock_chip(sym)
-        margin    = fetch_margin(sym)
-        rows = chip_raw.get("data", [])
-        dates = sorted(set(r["date"] for r in rows))
-        latest_net: dict[str, int] = {"foreign": 0, "trust": 0, "dealer": 0}
-        if dates:
-            last_date = dates[-1]
-            from services.finmind_fetcher import NAME_MAP
-            for r in rows:
-                if r["date"] == last_date:
-                    key = NAME_MAP.get(r["name"])
-                    if key:
-                        latest_net[key] += int(r["buy"]) - int(r["sell"])
-        chip_data = {"latest": latest_net, "margin": margin}
-    except Exception:
-        pass
-
-    quote = None
-    try:
-        quote = fetch_stock_quote(sym)
-    except Exception:
-        pass
-
-    result = get_ai_analysis(sym, ind, chip_data, quote)
-
-    if not result:
-        return {"symbol": sym, "source": "rule_based"}
-
-    return {"symbol": sym, **result}
+        from agents.ai_engine import get_ai_analysis
+        result = await get_ai_analysis(sym, force=False)
+        if not result:
+            return {"symbol": sym, "source": "rule_based"}
+        return {"symbol": sym, **result}
+    except Exception as e:
+        logger.error("AI analysis failed [%s]: %s", sym, e)
+        return {"symbol": sym, "source": "rule_based", "error": str(e)}
 
 
 @router.get("/{symbol}/sentiment")

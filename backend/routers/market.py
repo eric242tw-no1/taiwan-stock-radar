@@ -1,6 +1,8 @@
-import time
+import time  # noqa
+from typing import Optional
 import yfinance as yf
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+import asyncio
 from services.data_fetcher import get_cached_us_indices, get_cache_meta
 from services.twse_fetcher import get_cached_tw_market, get_tw_cache_meta
 from services.taifex_fetcher import get_cached_futures_and_fx, get_futures_cache_meta
@@ -10,6 +12,7 @@ from services.ohlcv_service import fetch_ohlcv
 from services.sector_fetcher import get_cached_sectors, fetch_sectors
 from services.gov_fund_fetcher import get_cached_gov_funds, fetch_gov_funds
 from services.fear_greed_fetcher import get_cached_fear_greed
+from services.buffett_fetcher import get_cached_buffett, fetch_buffett
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -167,19 +170,24 @@ async def get_chip_summary():
 
 
 @router.get("/top-movers")
-async def get_top_movers(limit: int = 5):
+async def get_top_movers(limit: int = 5, codes: Optional[str] = Query(None)):
     """
     漲幅排行：從追蹤股票清單批量拉即時報價，按漲幅排序
-    快取 60 秒
+    快取 60 秒。codes 為逗號分隔的股票代碼（不含 .TW），例：2330,2317,2454
     """
     global _top_movers_cache
-    if time.time() - _top_movers_cache["ts"] < 60 and _top_movers_cache["data"]:
+    symbols = ([f"{c.strip()}.TW" for c in codes.split(",") if c.strip()] if codes else TRACKED_SYMBOLS)
+    cache_key = codes or ""
+    # invalidate cache when stock pool changes
+    if (time.time() - _top_movers_cache["ts"] < 60
+            and _top_movers_cache["data"]
+            and _top_movers_cache.get("pool_key") == cache_key):
         return {"results": _top_movers_cache["data"][:limit]}
 
     results = []
     try:
-        tickers = yf.Tickers(" ".join(TRACKED_SYMBOLS))
-        for sym in TRACKED_SYMBOLS:
+        tickers = yf.Tickers(" ".join(symbols))
+        for sym in symbols:
             try:
                 info = tickers.tickers[sym].fast_info
                 price      = float(info.last_price or 0)
@@ -199,21 +207,28 @@ async def get_top_movers(limit: int = 5):
         pass
 
     results.sort(key=lambda x: x["chg_pct"], reverse=True)
-    _top_movers_cache = {"ts": time.time(), "data": results}
+    _top_movers_cache = {"ts": time.time(), "data": results, "pool_key": cache_key}
     return {"results": results[:limit]}
 
 
 @router.get("/leaders")
-async def get_leaders(limit: int = 5):
+async def get_leaders(limit: int = 5, codes: Optional[str] = Query(None)):
     """
     波段領頭羊：從技術指標庫計算 AI 評分，篩選多頭訊號股
-    快取 60 秒
+    快取 60 秒。codes 為逗號分隔的股票代碼（不含 .TW），例：2330,2317,2454
     """
     global _leaders_cache
-    if time.time() - _leaders_cache["ts"] < 60 and _leaders_cache["data"]:
+    cache_key = codes or ""
+    if (time.time() - _leaders_cache["ts"] < 60
+            and _leaders_cache["data"]
+            and _leaders_cache.get("pool_key") == cache_key):
         return {"results": _leaders_cache["data"][:limit]}
 
     all_ind = get_all_indicators()
+    # filter by requested codes when provided
+    if codes:
+        wanted = {f"{c.strip()}.TW" for c in codes.split(",") if c.strip()}
+        all_ind = {k: v for k, v in all_ind.items() if k in wanted}
     scored = []
     for item in all_ind.values():
         rsi      = float(item.get("rsi14")    or 0)
@@ -250,7 +265,7 @@ async def get_leaders(limit: int = 5):
         })
 
     scored.sort(key=lambda x: x["score"], reverse=True)
-    _leaders_cache = {"ts": time.time(), "data": scored}
+    _leaders_cache = {"ts": time.time(), "data": scored, "pool_key": cache_key}
     return {"results": scored[:limit]}
 
 
@@ -284,7 +299,7 @@ async def get_us_stocks():
 
     symbols = [t[0] for t in US_HEAT_TICKERS]
     try:
-        raw = yf.download(symbols, period="2d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
+        raw = yf.download(symbols, period="5d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
         result = []
         for sym, label, full_name in US_HEAT_TICKERS:
             try:
@@ -328,7 +343,7 @@ async def get_memory_stocks():
     symbols = [s[0] for s in MEMORY_STOCKS]
     name_map = {s[0]: s[1] for s in MEMORY_STOCKS}
     try:
-        raw = yf.download(symbols, period="2d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
+        raw = yf.download(symbols, period="5d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
         result = []
         for sym, name in MEMORY_STOCKS:
             try:
@@ -363,6 +378,60 @@ async def get_sectors():
 async def get_fear_greed():
     """恐懼與貪婪指數（alternative.me，加密市場情緒），快取1小時"""
     return get_cached_fear_greed()
+
+
+@router.get("/buffett")
+async def get_buffett():
+    """
+    台股巴菲特指標：台股總市值 / GDP %
+    市值來源：TWSE afterTrading 統計，fallback：TAIEX × 校正因子
+    GDP：主計處年度估計值（年更新）
+    快取 1 小時
+    """
+    return get_cached_buffett()
+
+
+@router.post("/buffett/refresh")
+async def refresh_buffett():
+    """手動刷新巴菲特指標快取"""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, fetch_buffett)
+    return {"status": "triggered"}
+
+
+@router.get("/batch-quotes")
+async def get_batch_quotes(codes: str = Query(..., description="逗號分隔股票代號，如 2330,2317")):
+    """
+    批次取得多檔股票現價（持倉追蹤用）
+    回傳：{code: {price, change_pct, name}}
+    """
+    from services.stock_quote_fetcher import fetch_stock_quote
+
+    symbol_list = [c.strip() for c in codes.split(",") if c.strip()]
+    if not symbol_list or len(symbol_list) > 50:
+        raise HTTPException(status_code=400, detail="codes 需為 1–50 個代號")
+
+    async def _fetch(code: str) -> tuple[str, dict]:
+        loop = asyncio.get_event_loop()
+        try:
+            data = await loop.run_in_executor(None, fetch_stock_quote, code)
+            return code, {"price": data.get("price", 0), "change_pct": data.get("change_pct", 0), "name": data.get("name", "")}
+        except Exception:
+            return code, {"price": 0, "change_pct": 0, "name": ""}
+
+    results = await asyncio.gather(*[_fetch(c) for c in symbol_list])
+    return {"quotes": dict(results)}
+
+
+@router.get("/news")
+async def get_market_news(limit: int = 8):
+    """
+    台股市場快訊：從鉅亨網抓最新新聞標題，快取 10 分鐘
+    """
+    from services.news_fetcher import fetch_market_news
+    items = fetch_market_news(limit=limit)
+    return {"items": items}
 
 
 @router.get("/gov-funds")
