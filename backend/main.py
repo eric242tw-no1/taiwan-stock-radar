@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import market, stock, portfolio, alerts, analysis, backtest, screener, webhook, stock_pool
+from routers import market, stock, portfolio, alerts, analysis, backtest, screener, webhook, stock_pool, stream
 from services.data_fetcher import fetch_us_indices
 from services.twse_fetcher import fetch_tw_market
 from services.taifex_fetcher import fetch_futures_and_fx
@@ -105,6 +105,7 @@ app.include_router(backtest.router)
 app.include_router(screener.router)
 app.include_router(webhook.router)
 app.include_router(stock_pool.router)
+app.include_router(stream.router)
 
 
 @app.get("/")
