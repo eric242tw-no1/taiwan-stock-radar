@@ -24,3 +24,6 @@ Thumbs.db
 
 # Runtime data (user-specific, do not commit)
 backend/data/
+
+# Tauri build artifacts
+frontend/src-tauri/target/
