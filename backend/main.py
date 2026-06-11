@@ -18,6 +18,9 @@ from services.portfolio_service import ensure_table as ensure_portfolio_table
 from services.sector_fetcher import fetch_sectors
 from services.gov_fund_fetcher import fetch_gov_funds
 from services.buffett_fetcher import fetch_buffett
+from agents.self_audit import SelfAudit
+
+_self_audit = SelfAudit()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -68,8 +71,13 @@ async def lifespan(app: FastAPI):
         fetch_gov_funds, "cron",
         hour=15, minute=15, day_of_week="mon-fri", id="gov_funds_refresh",
     )
+    # Self Audit：每日 16:30 執行六大稽核
+    scheduler.add_job(
+        _self_audit.run, "cron",
+        hour=16, minute=30, day_of_week="mon-fri", id="self_audit",
+    )
     scheduler.start()
-    logger.info("APScheduler started — us:5min  tw:10s  futures_fx:1min  chip:14:35  indicators:15:05  sectors:15:10  gov:15:15")
+    logger.info("APScheduler started — us:5min  tw:10s  futures_fx:1min  chip:14:35  indicators:15:05  sectors:15:10  gov:15:15  audit:16:30")
 
     yield
 
