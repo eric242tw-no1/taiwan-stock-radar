@@ -2,15 +2,20 @@
 停損雙層保護
 Layer 1：下單同時掛停損委託（元大 API 停損單，毫秒級）
 Layer 2：後端每分鐘輪詢備援（Layer 1 失效時接手）
+
+Risk checks（倉位大小、最大虧損）統一由 RiskManager 執行，
+不在此重複實作。
 """
 import logging
 from datetime import datetime, time
 
 import pytz
+from services.risk_manager import RiskManager
 
 logger = logging.getLogger(__name__)
 
-_TW = pytz.timezone("Asia/Taipei")
+_TW  = pytz.timezone("Asia/Taipei")
+_rm  = RiskManager()
 
 
 class StopLossGuard:
@@ -75,6 +80,14 @@ class StopLossGuard:
                     continue
 
                 if current_price <= info["stop_price"]:
+                    # Drawdown check — stop-loss always fires, but log if already in bad shape
+                    dd = _rm.check_max_drawdown()
+                    if not dd.approved:
+                        logger.warning(
+                            "StopLossGuard Layer2: max drawdown exceeded (%s), "
+                            "stop-loss still executing", dd.reason
+                        )
+
                     await self.broker.place_order(
                         symbol=symbol,
                         action="sell",

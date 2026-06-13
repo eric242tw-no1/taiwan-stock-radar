@@ -75,3 +75,40 @@ async def stream_market():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/portfolio")
+async def stream_portfolio():
+    """
+    SSE 推播元大持倉，每 30 秒更新。
+    前端：const es = new EventSource('/api/stream/portfolio')
+    """
+    async def generator():
+        from main import _broker
+        while True:
+            try:
+                positions = await _broker.get_positions()
+                balance   = await _broker.get_balance()
+                payload = {
+                    "simulation": getattr(_broker, "simulation", True),
+                    "positions":  positions,
+                    "summary": {
+                        "total_value":  balance.get("total_value", 0),
+                        "cash":         balance.get("cash", 0),
+                        "margin_usage": balance.get("margin_usage", 0),
+                    },
+                    "updated_at": __import__("datetime").datetime.now(
+                        __import__("datetime").timezone(__import__("datetime").timedelta(hours=8))
+                    ).strftime("%Y-%m-%d %H:%M:%S"),
+                    "error": None,
+                }
+            except Exception as exc:
+                payload = {"error": str(exc), "positions": [], "simulation": True}
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(30)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -63,49 +63,125 @@ async def remove_holding(holding_id: int):
         raise HTTPException(status_code=404, detail="持倉不存在")
     return {"deleted": holding_id}
 
-# ─── 升級開關：有 key 就用 Claude Vision，沒有就用 pytesseract ───────────────
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-USE_CLAUDE_VISION = bool(ANTHROPIC_API_KEY) and ANTHROPIC_API_KEY not in ("placeholder", "sk-ant-placeholder", "")
+
+# ─── Yuanta 真實資料 endpoints (Change D) ────────────────────────────────────
+
+@router.get("/positions")
+async def get_yuanta_positions():
+    """
+    從元大 API 取得即時持倉列表。
+    simulation 模式回傳空列表 + simulation badge。
+    """
+    from main import _broker
+    simulation = getattr(_broker, "simulation", True)
+    try:
+        positions = await _broker.get_positions()
+        return {
+            "simulation": simulation,
+            "positions": positions,
+            "updated_at": _tw_now(),
+            "error": None,
+        }
+    except Exception as exc:
+        logger.error("get_yuanta_positions failed: %s", exc)
+        return {
+            "simulation": simulation,
+            "positions": [],
+            "updated_at": _tw_now(),
+            "error": str(exc),
+        }
 
 
-# ─── Claude Vision 解析（未來用）────────────────────────────────────────────
+@router.get("/summary")
+async def get_yuanta_summary():
+    """
+    從元大 API 取得帳戶摘要（總市值、現金、保證金使用率）。
+    simulation 模式回傳 mock 資料。
+    """
+    from main import _broker
+    simulation = getattr(_broker, "simulation", True)
+    try:
+        balance = await _broker.get_balance()
+        return {
+            "simulation": simulation,
+            "total_value": balance.get("total_value", 0),
+            "cash": balance.get("cash", 0),
+            "margin_usage": balance.get("margin_usage", 0),
+            "updated_at": _tw_now(),
+            "error": None,
+        }
+    except Exception as exc:
+        logger.error("get_yuanta_summary failed: %s", exc)
+        return {
+            "simulation": simulation,
+            "total_value": 0,
+            "cash": 0,
+            "margin_usage": 0,
+            "updated_at": _tw_now(),
+            "error": str(exc),
+        }
+
+
+def _tw_now() -> str:
+    from datetime import datetime, timedelta, timezone
+    tz = timezone(timedelta(hours=8))
+    return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+
+# ─── 升級開關：有 OpenAI key 優先，其次 Groq，沒有就用 pytesseract ──────────
+_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+_GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+USE_CLAUDE_VISION = bool(_OPENAI_API_KEY) or bool(_GROQ_API_KEY)
+
+
+# ─── Vision 解析（OpenAI GPT-4o 優先，fallback Groq）────────────────────────
 async def _parse_with_claude_vision(image_bytes: bytes) -> list[dict]:
-    """
-    TODO: 等取得 ANTHROPIC_API_KEY 後自動啟用
-    呼叫 Claude claude-3-5-haiku-20241022 解析元大庫存截圖
-    """
-    import anthropic
-    import base64
+    import base64, json
+    import httpx
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    prompt = """This is a screenshot from Yuanta Securities (元大證券) Taiwan stock portfolio app.
 
-    prompt = """這是一張台灣元大證券的庫存截圖。
-請擷取所有持股資訊，以 JSON array 格式回傳，每個物件包含：
-- code: 股票代號（4碼數字字串）
-- name: 股票名稱
-- qty: 庫存張數（整數）
-- cost: 平均成本/買入均價（數字）
-- current_price: 現價（數字，若無則 null）
+The table columns are: 名稱(name) | 平均成本(avg cost) | 庫存股數(shares) | 現股當沖(day trade) | 損益(P&L)
 
-只回傳 JSON array，不要其他文字。範例：
-[{"code":"2330","name":"台積電","qty":1,"cost":2365.0,"current_price":2390.0}]"""
+Extract ALL stock positions shown. Return ONLY a JSON array with no other text:
+[{"code":"2330","name":"台積電","qty":1,"cost":2365.0,"current_price":2390.0}]
 
-    msg = client.messages.create(
-        model="claude-3-5-haiku-20241022",
-        max_tokens=1024,
-        messages=[{
+Rules:
+- code: 4-digit Taiwan stock code (find it near the stock name, or infer from name)
+- qty: 庫存股數 divided by 1000 = lots/張 (e.g. 11000 shares = 11張)
+- cost: 平均成本 column value (number only)
+- current_price: if visible, otherwise null
+- Include every row in the table"""
+
+    if _OPENAI_API_KEY:
+        api_url = "https://openrouter.ai/api/v1/chat/completions"
+        api_key = _OPENAI_API_KEY
+        model = "openai/gpt-4o"
+    else:
+        api_url = "https://api.groq.com/openai/v1/chat/completions"
+        api_key = _GROQ_API_KEY
+        model = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+    payload = {
+        "model": model,
+        "max_tokens": 1024,
+        "messages": [{
             "role": "user",
             "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
                 {"type": "text", "text": prompt},
             ],
         }],
-    )
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            api_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+        )
+        r.raise_for_status()
 
-    import json
-    text = msg.content[0].text.strip()
-    # 去掉可能的 markdown code block
+    text = r.json()["choices"][0]["message"]["content"].strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
     return json.loads(text)
@@ -122,7 +198,7 @@ def _parse_with_tesseract(image_bytes: bytes) -> list[dict]:
     except ImportError:
         raise HTTPException(
             status_code=501,
-            detail="pytesseract 未安裝。請先設定 ANTHROPIC_API_KEY 使用 Claude Vision 方案。"
+            detail="pytesseract 未安裝。請先設定 LOCAL_AI_API_KEY 使用 DeepSeek Vision 方案。"
         )
 
     img = Image.open(io.BytesIO(image_bytes))

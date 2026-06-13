@@ -18,6 +18,7 @@ AI_PROVIDER       = os.getenv("AI_PROVIDER",
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 LOCAL_BASE_URL    = os.getenv("LOCAL_AI_BASE_URL", "http://127.0.0.1:3001/v1")
 LOCAL_MODEL       = os.getenv("LOCAL_AI_MODEL", "auto")
+LOCAL_API_KEY     = os.getenv("LOCAL_AI_API_KEY", "not-needed")
 FINMIND_TOKEN     = os.getenv("FINMIND_TOKEN", "")
 REDIS_URL         = os.getenv("REDIS_URL", "redis://localhost:6379")
 
@@ -262,7 +263,7 @@ async def _call_anthropic(user_msg: str) -> str:
 
 async def _call_local(user_msg: str) -> str:
     import openai
-    client = openai.AsyncOpenAI(api_key="not-needed", base_url=LOCAL_BASE_URL)
+    client = openai.AsyncOpenAI(api_key=LOCAL_API_KEY, base_url=LOCAL_BASE_URL)
     msg = await client.chat.completions.create(
         model=LOCAL_MODEL,
         max_tokens=4096,
@@ -277,8 +278,8 @@ async def _call_local(user_msg: str) -> str:
 # ── 快取層 ───────────────────────────────────────────────
 
 def _cache_key(symbol: str) -> str:
-    today = datetime.now(_TW).strftime("%Y%m%d")
-    return f"ai_report:{symbol}:{today}"
+    today = datetime.now(_TW).strftime("%Y-%m-%d")
+    return f"ai:score:{symbol}:{today}"
 
 
 def _ttl_to_tomorrow_9am() -> int:
@@ -306,6 +307,43 @@ async def get_ai_analysis(symbol: str, force: bool = False) -> dict:
 
     await _cache_set(key, json.dumps(result, ensure_ascii=False), _ttl_to_tomorrow_9am())
     return {**result, "_cached": False}
+
+
+async def devil_advocate(
+    symbol: str,
+    action: str,
+    target_position: int,
+    diff: int,
+) -> dict:
+    """Quick AI sanity-check for a pending webhook order.
+
+    Returns {"confidence": 0.0-1.0, "approved": bool, "reason": str}.
+    Times out after 10 s; on timeout returns approved=False.
+    """
+    prompt = (
+        f"台股 Devil's Advocate 快速審核：\n"
+        f"股票：{symbol}　動作：{action}　目標張數：{target_position}　差異：{diff}\n"
+        "請以台股風控角度，判斷此操作是否合理。\n"
+        '只回傳 JSON：{"confidence": 0.0~1.0, "approved": true/false, "reason": "一句話"}'
+    )
+    try:
+        async with asyncio.timeout(10):
+            if AI_PROVIDER == "anthropic":
+                raw = await _call_anthropic(prompt)
+            else:
+                raw = await _call_local(prompt)
+        # extract JSON from response
+        start = raw.find("{")
+        end   = raw.rfind("}") + 1
+        data  = json.loads(raw[start:end]) if start >= 0 else {}
+        confidence = float(data.get("confidence", 0.5))
+        approved   = bool(data.get("approved", confidence >= 0.6))
+        reason     = data.get("reason", "")
+        return {"confidence": confidence, "approved": approved, "reason": reason}
+    except TimeoutError:
+        return {"confidence": 0.0, "approved": False, "reason": "AI 審核逾時"}
+    except Exception as exc:
+        return {"confidence": 0.0, "approved": False, "reason": f"AI 審核失敗：{exc}"}
 
 
 async def _cache_get(key: str) -> str | None:

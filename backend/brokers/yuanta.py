@@ -25,6 +25,16 @@ class YuantaBroker(BrokerBase):
         r.raise_for_status()
         return r.json()
 
+    async def get_position(self, symbol: str) -> int:
+        """Return current position quantity (shares) for symbol. 0 if not held."""
+        if self.simulation:
+            return 0
+        positions = await self.get_positions()
+        for p in positions:
+            if p.get("symbol") == symbol:
+                return int(p.get("quantity", 0))
+        return 0
+
     async def get_positions(self) -> list:
         r = await self._client.get(
             f"{self.base_url}/positions",

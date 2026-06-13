@@ -176,47 +176,43 @@ CREATE TABLE IF NOT EXISTS ic_memo (
     PRIMARY KEY (symbol, date)
 );
 
+-- Change D: stateful webhook signals
 CREATE TABLE IF NOT EXISTS tv_signals (
-    id           SERIAL PRIMARY KEY,
-    symbol       VARCHAR(10),
-    action       VARCHAR(10),
-    price        NUMERIC,
-    indicator    VARCHAR(50),
-    timeframe    VARCHAR(10),
-    source       VARCHAR(20),
-    triggered_at TIMESTAMP,
-    processed    BOOLEAN DEFAULT FALSE,
-    order_id     VARCHAR(50)
+    id              SERIAL PRIMARY KEY,
+    strategy_id     VARCHAR(50),
+    symbol          VARCHAR(10)   NOT NULL,
+    target_position INTEGER       NOT NULL,
+    actual_position INTEGER       NOT NULL DEFAULT 0,
+    diff            INTEGER       NOT NULL DEFAULT 0,
+    dedup_key       VARCHAR(100)  UNIQUE,
+    status          VARCHAR(20)   NOT NULL DEFAULT 'pending',
+    ai_confidence   NUMERIC(5,2),
+    executed_at     TIMESTAMP,
+    created_at      TIMESTAMP     NOT NULL DEFAULT NOW()
 );
 
+-- Change D: broker orders linked to tv_signals
 CREATE TABLE IF NOT EXISTS orders (
-    id                 SERIAL PRIMARY KEY,
-    symbol             VARCHAR(10),
-    action             VARCHAR(10),
-    order_type         VARCHAR(10),
-    quantity           INT,
-    price              NUMERIC,
-    filled_price       NUMERIC,
-    filled_qty         INT,
-    status             VARCHAR(20),
-    signal_source      VARCHAR(20),
-    ai_score           INT,
-    risk_checked       BOOLEAN,
-    yuanta_order_id    VARCHAR(50),
-    stop_loss_price    NUMERIC,
-    take_profit_price  NUMERIC,
-    created_at         TIMESTAMP DEFAULT NOW(),
-    filled_at          TIMESTAMP
+    id              SERIAL PRIMARY KEY,
+    tv_signal_id    INTEGER REFERENCES tv_signals(id),
+    symbol          VARCHAR(10)   NOT NULL,
+    action          VARCHAR(10)   NOT NULL,
+    quantity        INTEGER       NOT NULL,
+    price           NUMERIC(12,2),
+    status          VARCHAR(20)   NOT NULL DEFAULT 'pending',
+    broker_order_id VARCHAR(50),
+    created_at      TIMESTAMP     NOT NULL DEFAULT NOW()
 );
 
+-- Change D: daily account snapshots
 CREATE TABLE IF NOT EXISTS account_snapshots (
-    date           DATE PRIMARY KEY,
-    total_assets   NUMERIC,
-    cash           NUMERIC,
-    position_value NUMERIC,
-    daily_pnl      NUMERIC,
-    total_pnl      NUMERIC,
-    win_rate       NUMERIC
+    id           SERIAL PRIMARY KEY,
+    date         DATE          NOT NULL UNIQUE,
+    total_value  NUMERIC(15,2) NOT NULL,
+    cash         NUMERIC(15,2) NOT NULL,
+    daily_pnl    NUMERIC(15,2) NOT NULL DEFAULT 0,
+    margin_usage NUMERIC(5,4)  NOT NULL DEFAULT 0,
+    created_at   TIMESTAMP     NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS system_config (

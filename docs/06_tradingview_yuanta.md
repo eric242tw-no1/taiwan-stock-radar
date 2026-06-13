@@ -1,26 +1,63 @@
 # Taiwan AI Stock Radar — 06 TradingView + 元大 API
-> Phase 2 串接時使用
+> Change D 更新（2026-06-13）：Stateful Webhook + HMAC 驗證 + RiskManager
 
-## TradingView Webhook 串接
+## TradingView Webhook 串接（Change D）
 
 ### 前提
-需升級 TradingView Plus 以上（$24.95/月）
-Phase 1 先用 AI 替代，升級後無縫切換
+需升級 TradingView Plus 以上（$24.95/月）。Phase 1 先用 AI 替代，升級後無縫切換。
 
-### Pine Script Alert 格式
+### 設定 HMAC 密鑰
+在 `backend/.env` 設定：
+```
+TV_WEBHOOK_SECRET=<用 openssl rand -hex 32 產生>
+```
+
+### 新 Payload 格式（Change D）
 在 TradingView Alert → Message 填入：
 ```json
 {
+  "strategy_id": "swing_v1",
   "symbol": "{{ticker}}",
-  "action": "{{strategy.order.action}}",
-  "price": {{close}},
-  "indicator": "MACD_CROSS",
-  "timeframe": "{{interval}}",
-  "timestamp": "{{time}}"
+  "secret": "YOUR_TV_WEBHOOK_SECRET",
+  "target_position": 1000,
+  "timestamp": {{timenow}}
 }
 ```
 
-### 常用觸發條件
+| 欄位 | 說明 |
+|------|------|
+| `strategy_id` | 策略識別碼（自定義，如 `swing_v1`） |
+| `symbol` | TradingView ticker（自動去除 `TWSE:` 前綴） |
+| `secret` | 與 `TV_WEBHOOK_SECRET` 相同，用於 HMAC 驗證 |
+| `target_position` | **目標張數（股數）**，0 = 全部出場 |
+| `timestamp` | TradingView 內建變數 `{{timenow}}`（Unix 秒） |
+
+### 舊格式（已廢棄）
+舊的 action/qty 格式已移除（2026-06-13），請改用上方的 target_position 格式。
+
+### Pine Script Alert 範本（新格式）
+```pine
+// 目標持倉 1000 股（約 1 張）
+alert('{"strategy_id":"swing_v1","symbol":"{{ticker}}","secret":"YOUR_SECRET","target_position":1000,"timestamp":' + str.tostring(timenow) + '}')
+
+// 全部出場
+alert('{"strategy_id":"swing_v1","symbol":"{{ticker}}","secret":"YOUR_SECRET","target_position":0,"timestamp":' + str.tostring(timenow) + '}')
+```
+
+### Webhook 完整流程（Change D）
+```
+TradingView Alert
+  ↓ POST /api/webhook/tradingview
+  ↓ 1. HMAC secret 驗證（hmac.compare_digest）
+  ↓ 2. Redis dedup（key = strategy_id:symbol:timestamp//60，TTL 60s）
+  ↓ 3. YuantaBroker.get_position(symbol) → 計算 diff
+  ↓ 4. RiskManager.check_max_drawdown()（當日虧損 > 5% 停止）
+  ↓ 5. devil_advocate()（AI 信心 < 60% 拒絕，timeout 10s）
+  ↓ 6. YuantaBroker.place_order() → 寫入 tv_signals + orders 表
+  ↓ Telegram 推播結果
+```
+
+### 常用觸發條件（Pine Script）
 ```pine
 // MACD 黃金交叉
 [macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
