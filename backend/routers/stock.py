@@ -83,6 +83,43 @@ async def get_stock_ai_analysis(symbol: str):
         return {"symbol": sym, "source": "rule_based", "error": str(e)}
 
 
+@router.get("/{symbol}/chip-distribution")
+async def get_chip_distribution(symbol: str):
+    """
+    TDCC 集保分布：各持股級距佔比（週更新）
+    資料來源：FinMind TaiwanStockHolding
+    """
+    from services.tdcc_fetcher import get_chip_distribution
+    data = get_chip_distribution(symbol.upper())
+    return {"symbol": symbol.upper(), "distribution": data}
+
+
+@router.get("/{symbol}/ai-score")
+async def get_stock_ai_score(symbol: str):
+    """
+    快取讀取 AI 評分：直接從 Redis 讀取當日快取，未命中回傳 null score。
+    不觸發新的 Claude API 呼叫，適合輪詢/輕量讀取。
+    """
+    sym = symbol.upper()
+    try:
+        from agents.ai_engine import _cache_get, _cache_key
+        import json
+        cached = await _cache_get(_cache_key(sym))
+        if cached:
+            data = json.loads(cached)
+            return {
+                "symbol": sym,
+                "score": data.get("score"),
+                "action": data.get("action"),
+                "summary": data.get("summary"),
+                "cached": True,
+            }
+        return {"symbol": sym, "score": None, "cached": False}
+    except Exception as e:
+        logger.error("AI score cache read failed [%s]: %s", sym, e)
+        return {"symbol": sym, "score": None, "cached": False, "error": str(e)}
+
+
 @router.get("/{symbol}/sentiment")
 async def get_stock_sentiment(symbol: str):
     """

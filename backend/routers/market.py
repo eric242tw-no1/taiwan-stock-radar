@@ -443,3 +443,17 @@ async def get_gov_funds():
     """
     data = get_cached_gov_funds()
     return data
+
+
+
+@router.get("/correlation")
+async def get_correlation():
+    """
+    台美滾動相關係數（30/60/90 日 Pearson r）
+    資料來源：Yahoo Finance ^GSPC + ^TWII，每日 15:15 更新
+    """
+    from services.correlation_service import get_latest
+    data = get_latest()
+    if data:
+        return data
+    return {"date": None, "tw_us_corr_30d": None, "tw_us_corr_60d": None, "tw_us_corr_90d": None}

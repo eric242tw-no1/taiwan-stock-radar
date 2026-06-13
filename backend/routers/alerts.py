@@ -60,8 +60,11 @@ _load()
 class AlertRule(BaseModel):
     symbol: str
     name: Optional[str] = ""
-    type: Literal["limit", "large_order", "both"] = "both"
+    type: Literal["price", "rsi", "volume", "ai_score", "deviation", "change_pct", "limit", "large_order", "both"] = "both"
+    threshold: Optional[float] = None
+    operator: Optional[str] = "gte"       # gte | lte | gt | lt
     large_order_threshold: Optional[int] = 500  # 張
+    enabled: Optional[bool] = True
 
 
 class TestMessage(BaseModel):
@@ -81,6 +84,15 @@ def create_rule(body: AlertRule):
     _next_id += 1
     _save()
     return rule
+
+
+@router.put("/{rule_id}")
+def update_rule(rule_id: int, body: AlertRule):
+    if rule_id not in _rules:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    _rules[rule_id] = {"id": rule_id, **body.model_dump()}
+    _save()
+    return _rules[rule_id]
 
 
 @router.delete("/{rule_id}", status_code=204)

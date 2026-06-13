@@ -9,6 +9,13 @@ import StockPoolModal from "@/components/StockPoolModal";
 export const metadata: Metadata = {
   title: "台股AI雷達",
   description: "Taiwan AI Stock Radar",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "台股AI雷達",
+  },
+  themeColor: "#0a0a12",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

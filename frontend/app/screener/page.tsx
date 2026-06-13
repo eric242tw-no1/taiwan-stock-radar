@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function useIsMobile() {
   const [m, setM] = useState(false);
@@ -220,6 +222,8 @@ function GroupLabel({ label }: { label: string }) {
   return <span style={{ fontSize:11, color:"#444460", letterSpacing:1, whiteSpace:"nowrap", padding:"0 4px" }}>{label}</span>;
 }
 
+interface LiveStock { symbol: string; name: string; close: number; change: number; change_pct: number; volume_lot: number; }
+
 export default function ScreenerPage() {
   const isMobile = useIsMobile();
   const [industry,      setIndustry]      = useState("全部");
@@ -239,7 +243,41 @@ export default function ScreenerPage() {
   const [tab, setTab] = useState<"scan" | "watchlist">("scan");
   const [pickerStock, setPickerStock] = useState<Stock | null>(null);
 
+  // Live scan
+  const [liveStocks, setLiveStocks] = useState<LiveStock[] | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState("");
+
   useEffect(() => { setWatchlist(loadWL()); }, []);
+
+  const runLiveScan = useCallback(async () => {
+    setLiveLoading(true); setLiveError(""); setLiveStocks(null);
+    const strategy = filterForeign ? "foreign_consec"
+      : filterMA ? "ma20_breakout"
+      : filterRSI ? (filterOversold ? "rsi_oversold" : filterOverbought ? "rsi_oversold" : undefined)
+      : undefined;
+    const body: Record<string, unknown> = {
+      min_volume_lot: filterVolume ? 3000 : 500,
+      limit: 100,
+    };
+    if (strategy) body.strategy = strategy;
+    if (filterLimitUp) body.min_change_pct = 9.5;
+    if (filterLimitDn) body.max_change_pct = -9.5;
+    try {
+      const res = await fetch(`${API_BASE}/api/screener/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setLiveStocks(data.stocks ?? []);
+    } catch (e) {
+      setLiveError(e instanceof Error ? e.message : "掃描失敗");
+    } finally {
+      setLiveLoading(false);
+    }
+  }, [filterForeign, filterMA, filterRSI, filterOversold, filterOverbought, filterVolume, filterLimitUp, filterLimitDn]);
 
   const handleStarClick = (s: Stock) => {
     if (watchlist.includes(s.code)) {
@@ -426,12 +464,60 @@ export default function ScreenerPage() {
         </div>
       )}
 
-      <div style={{
-        marginTop:20, padding:"12px 14px", borderRadius:8,
-        background:"#0d0d15", border:"1px solid #2a2a3a", fontSize:12, color:"#8888aa", lineHeight:1.8,
-      }}>
-        <span style={{ color:"#f5a623", fontWeight:600 }}>⚠️ 目前為 Demo 資料</span>
-        　Data Agent 上線後每日 14:30 自動掃描全市場 1,800+ 檔，含即時漲跌停、大單追蹤、量比警示。
+      {/* Live 掃描區 */}
+      <div style={{ marginTop:20, background:"#111118", border:"1px solid #2a2a3a", borderRadius:10, padding:"14px 16px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <span style={{ fontSize:13, fontWeight:600, color:"#8888aa", letterSpacing:0.8, textTransform:"uppercase" }}>
+            Live 全市場掃描
+          </span>
+          <button onClick={runLiveScan} disabled={liveLoading} style={{
+            background: liveLoading ? "#1a1a2e" : "#001a40",
+            border:`1px solid ${liveLoading ? "#2a2a3a" : "#3d7eff55"}`,
+            borderRadius:6, color: liveLoading ? "#555570" : "#3d7eff",
+            fontSize:13, padding:"6px 18px", cursor: liveLoading ? "not-allowed" : "pointer", fontWeight:600,
+          }}>
+            {liveLoading ? "掃描中…" : "▶ 套用條件掃描"}
+          </button>
+        </div>
+        {liveError && <div style={{ fontSize:12, color:"#ff4d4d", marginBottom:8 }}>⚠ {liveError}</div>}
+        {liveStocks === null && !liveLoading && (
+          <div style={{ fontSize:12, color:"#555570" }}>
+            點擊「套用條件掃描」從後端即時掃描全市場，結果按成交量排序。
+          </div>
+        )}
+        {liveStocks !== null && liveStocks.length === 0 && (
+          <div style={{ fontSize:13, color:"#555570" }}>無符合條件的股票。</div>
+        )}
+        {liveStocks && liveStocks.length > 0 && (
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <thead>
+                <tr style={{ color:"#555570", borderBottom:"1px solid #2a2a3a" }}>
+                  {["代號","名稱","收盤","漲跌%","成交(張)"].map(h => (
+                    <th key={h} style={{ padding:"4px 10px", textAlign:"right", fontWeight:500 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {liveStocks.map(s => {
+                  const up = s.change_pct >= 0;
+                  return (
+                    <tr key={s.symbol} style={{ borderBottom:"1px solid #1a1a2a" }}>
+                      <td style={{ padding:"5px 10px", textAlign:"right", color:"#3d7eff", fontWeight:700 }}>{s.symbol}</td>
+                      <td style={{ padding:"5px 10px", textAlign:"right", color:"#c8c8d8" }}>{s.name}</td>
+                      <td style={{ padding:"5px 10px", textAlign:"right", color:"#e8e8f0" }}>{s.close.toLocaleString()}</td>
+                      <td style={{ padding:"5px 10px", textAlign:"right", color: up ? "#ff4d4d" : "#00c076", fontWeight:600 }}>
+                        {up ? "+" : ""}{s.change_pct.toFixed(2)}%
+                      </td>
+                      <td style={{ padding:"5px 10px", textAlign:"right", color:"#8888aa" }}>{s.volume_lot.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ fontSize:11, color:"#555570", marginTop:8 }}>共 {liveStocks.length} 檔 · 資料來源：TWSE OpenAPI</div>
+          </div>
+        )}
       </div>
     </div>
   );

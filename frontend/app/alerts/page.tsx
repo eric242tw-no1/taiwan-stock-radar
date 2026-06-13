@@ -37,7 +37,7 @@ interface LiveSnapshot {
 // ── 常數 ──────────────────────────────────────────────────────────
 const ALERT_KEY   = "tw_radar_alerts";
 const HISTORY_KEY = "tw_radar_alert_history";
-const API = "";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const METRIC_LABEL: Record<Metric, string> = {
   ai_score:            "AI 分數",
@@ -196,21 +196,42 @@ export default function AlertsPage() {
   const [threshold, setThreshold] = useState("");
   const [hint,      setHint]      = useState<{ msg: string; ok: boolean } | null>(null);
 
-  // ── 初始載入 ──────────────────────────────────────────────────
+  // ── 初始載入：優先從後端 API 讀取 ────────────────────────────
   useEffect(() => {
-    const stored = loadAlerts();
-    if (stored.length === 0) {
-      // 植入三筆 demo 讓使用者立刻看到效果
-      const demo: Alert[] = [
-        { id: "d1", symbol: "2330", metric: "deviation",  op: "gte", threshold: 10,  enabled: true,  triggered: false },
-        { id: "d2", symbol: "2317", metric: "ai_score",   op: "lte", threshold: 45,  enabled: true,  triggered: false },
-        { id: "d3", symbol: "2454", metric: "rsi",        op: "gte", threshold: 70,  enabled: false, triggered: false },
-      ];
-      saveAlerts(demo);
-      setAlerts(demo);
-    } else {
-      setAlerts(stored);
-    }
+    fetch(`${API}/api/alerts`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { id: number; symbol: string; type: string; threshold?: number; operator?: string }[] | null) => {
+        if (data && data.length > 0) {
+          const mapped: Alert[] = data.map(r => ({
+            id: String(r.id),
+            symbol: r.symbol,
+            metric: (r.type === "rsi" ? "rsi" : r.type === "volume" ? "change_pct" : "ai_score") as Metric,
+            op: (r.operator ?? "gte") as Op,
+            threshold: r.threshold ?? 0,
+            enabled: true,
+            triggered: false,
+          }));
+          setAlerts(mapped);
+          saveAlerts(mapped);
+        } else {
+          const stored = loadAlerts();
+          if (stored.length === 0) {
+            const demo: Alert[] = [
+              { id: "d1", symbol: "2330", metric: "deviation",  op: "gte", threshold: 10,  enabled: true,  triggered: false },
+              { id: "d2", symbol: "2317", metric: "ai_score",   op: "lte", threshold: 45,  enabled: true,  triggered: false },
+              { id: "d3", symbol: "2454", metric: "rsi",        op: "gte", threshold: 70,  enabled: false, triggered: false },
+            ];
+            saveAlerts(demo);
+            setAlerts(demo);
+          } else {
+            setAlerts(stored);
+          }
+        }
+      })
+      .catch(() => {
+        const stored = loadAlerts();
+        setAlerts(stored.length ? stored : []);
+      });
     setHistory(loadHistory());
   }, []);
 
@@ -295,7 +316,7 @@ export default function AlertsPage() {
   }, [live]);
 
   // ── 表單新增 ──────────────────────────────────────────────────
-  function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     const sym = symbol.trim().toUpperCase();
     const thr = parseFloat(threshold);
@@ -303,6 +324,14 @@ export default function AlertsPage() {
       setHint({ msg: "請填寫股票代號與有效閾值", ok: false });
       return;
     }
+    // 同時寫後端 API 和本地
+    try {
+      await fetch(`${API}/api/alerts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: sym, type: metric === "rsi" ? "rsi" : "price", threshold: thr, operator: op }),
+      });
+    } catch {}
     const next: Alert = { id: Date.now().toString(), symbol: sym, metric, op, threshold: thr, enabled: true, triggered: false };
     const updated = [next, ...alerts];
     saveAlerts(updated);
@@ -319,7 +348,12 @@ export default function AlertsPage() {
     saveAlerts(updated); setAlerts(updated);
   }
 
-  function del(id: string) {
+  async function del(id: string) {
+    // 嘗試刪後端（只有數字 ID 是後端資料）
+    const numId = parseInt(id);
+    if (!isNaN(numId)) {
+      try { await fetch(`${API}/api/alerts/${numId}`, { method: "DELETE" }); } catch {}
+    }
     const updated = alerts.filter((a) => a.id !== id);
     saveAlerts(updated); setAlerts(updated);
   }

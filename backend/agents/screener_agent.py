@@ -88,12 +88,14 @@ def apply_basic_filters(df: pd.DataFrame, criteria: dict) -> pd.DataFrame:
 async def apply_tech_filters(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
     """
     strategy:
-      "ma20_breakout"  — 今日收盤突破 MA20，且成交量 > 5 日均量 1.5 倍
-      "rsi_oversold"   — RSI(14) 由下往上穿越 30
-      "high_60d"       — 創近 60 日收盤新高
+      "ma20_breakout"   — 今日收盤突破 MA20，且成交量 > 5 日均量 1.5 倍
+      "rsi_oversold"    — RSI(14) 由下往上穿越 30
+      "high_60d"        — 創近 60 日收盤新高
+      "momentum_20d"    — 近 20 日報酬率 > 10%（動能因子）
+      "foreign_consec"  — 外資連買 ≥ 3 日（籌碼因子）
     只對前 MAX_TECH_CANDIDATES 檔計算（依成交量排序）
     """
-    if strategy not in ("ma20_breakout", "rsi_oversold", "high_60d"):
+    if strategy not in ("ma20_breakout", "rsi_oversold", "high_60d", "momentum_20d", "foreign_consec"):
         return df
 
     candidates = df.nlargest(MAX_TECH_CANDIDATES, "volume_lot")
@@ -111,6 +113,10 @@ async def apply_tech_filters(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
         elif strategy == "rsi_oversold" and _check_rsi_oversold(hist):
             passed.append(sym)
         elif strategy == "high_60d" and _check_high_60d(hist):
+            passed.append(sym)
+        elif strategy == "momentum_20d" and _check_momentum_20d(hist):
+            passed.append(sym)
+        elif strategy == "foreign_consec" and await _check_foreign_consec(sym):
             passed.append(sym)
 
     return df[df["symbol"].isin(passed)].copy()
@@ -140,6 +146,14 @@ def _check_rsi_oversold(hist: pd.DataFrame) -> bool:
     return rsi.iloc[-1] > 30 and rsi.iloc[-2] <= 30
 
 
+def _check_momentum_20d(hist: pd.DataFrame) -> bool:
+    if len(hist) < 22:
+        return False
+    close = hist["close"]
+    ret_20d = (close.iloc[-1] - close.iloc[-21]) / close.iloc[-21] * 100
+    return ret_20d > 10
+
+
 def _check_high_60d(hist: pd.DataFrame) -> bool:
     if len(hist) < 2:
         return False
@@ -153,6 +167,39 @@ def _calc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     loss = (-delta.clip(upper=0)).rolling(period).mean()
     rs = gain / loss.replace(0, float("nan"))
     return 100 - (100 / (1 + rs))
+
+
+# ── 籌碼因子：外資連買 ────────────────────────────────────
+
+async def _check_foreign_consec(symbol: str, min_days: int = 3) -> bool:
+    """外資連買 ≥ min_days 日。"""
+    start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    params = {
+        "dataset": "TaiwanStockInstitutionalInvestors",
+        "data_id": symbol,
+        "start_date": start_date,
+        "token": FINMIND_TOKEN,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(_FINMIND_URL, params=params)
+        rows = r.json().get("data", [])
+        if not rows:
+            return False
+        chip = pd.DataFrame(rows)
+        chip["buy"]  = pd.to_numeric(chip["buy"],  errors="coerce").fillna(0)
+        chip["sell"] = pd.to_numeric(chip["sell"], errors="coerce").fillna(0)
+        chip["net"]  = chip["buy"] - chip["sell"]
+        foreign = chip[chip["name"].str.contains("外資", na=False)].sort_values("date")
+        consec = 0
+        for v in reversed(foreign["net"].tolist()):
+            if v > 0:
+                consec += 1
+            else:
+                break
+        return consec >= min_days
+    except Exception:
+        return False
 
 
 # ── FinMind 歷史資料 ──────────────────────────────────────

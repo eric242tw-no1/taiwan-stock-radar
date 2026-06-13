@@ -48,6 +48,16 @@ export default function MarketOverview() {
     return () => clearInterval(id);
   }, []);
 
+  // ── 台美連動相關係數 ──────────────────────────────────────────
+  type CorrData = { date: string | null; tw_us_corr_30d: number | null; tw_us_corr_60d: number | null; tw_us_corr_90d: number | null };
+  const [corrData, setCorrData] = useState<CorrData | null>(null);
+  useEffect(() => {
+    fetch(`${API}/api/market/correlation`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setCorrData(d))
+      .catch(() => {});
+  }, []);
+
   // ── 八大官股 ─────────────────────────────────────────────────
   type GovFunds = { items: { name: string; net_bn: number; direction: string }[]; total_bn: number; date: string; source: string };
   const [govFunds, setGovFunds] = useState<GovFunds | null | "unavailable">(null);
@@ -382,23 +392,28 @@ export default function MarketOverview() {
 
         {/* 台美連動 */}
         <Card title="台美連動分析" style={isMobile ? { minWidth: "75vw", scrollSnapAlign: "start", flexShrink: 0 } : {}}>
-          {[
-            { label: "NVDA ↔ 台積電",    corr: 0.82,  color: "#00c076" },
-            { label: "費半 ↔ 半導體",    corr: 0.79,  color: "#00c076" },
-            { label: "TSMC ADR ↔ 現貨", corr: 0.94,  color: "#00c076" },
-            { label: "DXY ↔ 台幣",      corr: -0.71, color: "#ff4d4d" },
-          ].map(c => (
-            <div key={c.label} style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 15, color: "var(--c-text-dim)" }}>{c.label}</span>
-                <span style={{ fontSize: 15, fontWeight: 600, color: c.color }}>{c.corr}</span>
+          {([
+            { label: "台美 30日", value: corrData?.tw_us_corr_30d },
+            { label: "台美 60日", value: corrData?.tw_us_corr_60d },
+            { label: "台美 90日", value: corrData?.tw_us_corr_90d },
+          ] as { label: string; value: number | null | undefined }[]).map(c => {
+            const v = c.value ?? null;
+            const color = v === null ? "var(--c-text-dim)" : v >= 0 ? "#00c076" : "#ff4d4d";
+            return (
+              <div key={c.label} style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 15, color: "var(--c-text-dim)" }}>{c.label}</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color }}>{v !== null ? v.toFixed(2) : "---"}</span>
+                </div>
+                <div style={{ height: 3, background: "var(--c-border)", borderRadius: 2 }}>
+                  <div style={{ height: "100%", borderRadius: 2, background: color, width: v !== null ? `${Math.abs(v) * 100}%` : "0%" }} />
+                </div>
               </div>
-              <div style={{ height: 3, background: "var(--c-border)", borderRadius: 2 }}>
-                <div style={{ height: "100%", borderRadius: 2, background: c.color, width: `${Math.abs(c.corr) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-          <div style={{ fontSize: 13, color: "var(--c-text-dim)", marginTop: 4 }}>60 日滾動相關係數 ｜ 每日更新</div>
+            );
+          })}
+          <div style={{ fontSize: 13, color: "var(--c-text-dim)", marginTop: 4 }}>
+            S&P500 ↔ 台灣加權 滾動相關係數 ｜ {corrData?.date ?? "每日 15:15 更新"}
+          </div>
         </Card>
 
       </div>

@@ -16,12 +16,16 @@ Body:
 }
 """
 import asyncio
+import uuid
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from backtest.engine import fetch_backtest_data, run_backtest
 
 router = APIRouter(tags=["backtest"])
+
+# in-memory result store {result_id: {"status": "running"|"done"|"error", "result": dict}}
+_results: dict[str, dict] = {}
 
 
 class BacktestRequest(BaseModel):
@@ -31,6 +35,36 @@ class BacktestRequest(BaseModel):
     strategy:     str = Field("wave", description="wave | momentum")
     initial_cash: float = 1_000_000
     params:       dict = {}
+
+
+async def _run_backtest_task(result_id: str, body: BacktestRequest) -> None:
+    try:
+        df = await fetch_backtest_data(body.symbol, body.start, body.end)
+        result = await asyncio.to_thread(run_backtest, df, body.strategy, body.params, body.initial_cash)
+        _results[result_id] = {
+            "status": "done",
+            "result": {"symbol": body.symbol, "start": body.start, "end": body.end, "bars": len(df), **result},
+        }
+    except Exception as e:
+        _results[result_id] = {"status": "error", "error": str(e)}
+
+
+@router.post("/api/backtest/run", status_code=202)
+async def run_async(body: BacktestRequest, background_tasks: BackgroundTasks):
+    """背景執行回測，回傳 result_id，用 GET /api/backtest/{result_id} 查詢結果。"""
+    result_id = str(uuid.uuid4())
+    _results[result_id] = {"status": "running"}
+    background_tasks.add_task(_run_backtest_task, result_id, body)
+    return {"result_id": result_id, "status": "running"}
+
+
+@router.get("/api/backtest/{result_id}")
+def get_result(result_id: str):
+    """查詢回測結果（status: running | done | error）。"""
+    item = _results.get(result_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return item
 
 
 @router.post("/api/backtest")
@@ -78,6 +112,18 @@ def list_strategies():
                 "name": "趨勢跟隨",
                 "desc": "創 60 日新高 + 連 3 日收紅",
                 "params": {"stop_loss_pct": 0.10, "max_hold_days": 42},
+            },
+            {
+                "id": "ma_cross",
+                "name": "MA 黃金交叉",
+                "desc": "短均穿越長均買入，死叉賣出",
+                "params": {"short_period": 10, "long_period": 30, "stop_loss_pct": 0.08},
+            },
+            {
+                "id": "rsi",
+                "name": "RSI 超買超賣",
+                "desc": "RSI 從超賣回升買入，從超買回落賣出",
+                "params": {"rsi_period": 14, "oversold": 30, "overbought": 70, "stop_loss_pct": 0.08},
             },
         ]
     }

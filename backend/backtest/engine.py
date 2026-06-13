@@ -137,9 +137,61 @@ class MomentumStrategy(bt.Strategy):
                 self.sell()
 
 
+class MaCrossStrategy(bt.Strategy):
+    """MA 黃金交叉策略：短均穿越長均 → 買；死叉 → 賣。"""
+    params = (
+        ("short_period", 10),
+        ("long_period",  30),
+        ("stop_loss_pct", 0.08),
+    )
+
+    def __init__(self):
+        self.sma_s = bt.indicators.SMA(self.data, period=self.params.short_period)
+        self.sma_l = bt.indicators.SMA(self.data, period=self.params.long_period)
+        self.entry_price = 0.0
+
+    def next(self):
+        if not self.position:
+            if self.sma_s[-1] <= self.sma_l[-1] and self.sma_s[0] > self.sma_l[0]:
+                self.buy()
+                self.entry_price = self.data.close[0]
+        else:
+            stop = self.entry_price * (1 - self.params.stop_loss_pct)
+            if (self.sma_s[-1] >= self.sma_l[-1] and self.sma_s[0] < self.sma_l[0]
+                    or self.data.close[0] < stop):
+                self.sell()
+
+
+class RsiStrategy(bt.Strategy):
+    """RSI 超賣反彈策略：RSI 從超賣回升 → 買；從超買回落 → 賣。"""
+    params = (
+        ("rsi_period",  14),
+        ("oversold",    30),
+        ("overbought",  70),
+        ("stop_loss_pct", 0.08),
+    )
+
+    def __init__(self):
+        self.rsi = bt.indicators.RSI(self.data, period=self.params.rsi_period)
+        self.entry_price = 0.0
+
+    def next(self):
+        if not self.position:
+            if self.rsi[-1] <= self.params.oversold and self.rsi[0] > self.params.oversold:
+                self.buy()
+                self.entry_price = self.data.close[0]
+        else:
+            stop = self.entry_price * (1 - self.params.stop_loss_pct)
+            if (self.rsi[-1] >= self.params.overbought and self.rsi[0] < self.params.overbought
+                    or self.data.close[0] < stop):
+                self.sell()
+
+
 STRATEGIES = {
     "wave":     WaveStrategy,
     "momentum": MomentumStrategy,
+    "ma_cross": MaCrossStrategy,
+    "rsi":      RsiStrategy,
 }
 
 
@@ -161,8 +213,11 @@ def run_backtest(df: pd.DataFrame, strategy: str, params: dict, initial_cash: fl
     cerebro.broker.setcash(initial_cash)
     cerebro.broker.setcommission(0.001425)   # 手續費 0.1425%
     cerebro.broker.set_slippage_perc(0.001)  # 滑點 0.1%
+    # 每次買進用 90% 可用資金（自動計算股數，避免只買 1 股）
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=90)
 
-    cerebro.addanalyzer(bt.analyzers.SharpeRatio,  _name="sharpe",   riskfreerate=0.02)
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio,  _name="sharpe",
+                        riskfreerate=0.02, annualize=True)
     cerebro.addanalyzer(bt.analyzers.DrawDown,      _name="drawdown")
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
     cerebro.addanalyzer(bt.analyzers.Returns,       _name="returns")

@@ -15,6 +15,7 @@ import json
 import time
 from typing import Optional
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 from agents.screener_agent import fetch_market_snapshot, apply_basic_filters, apply_tech_filters
 
 router = APIRouter(tags=["screener"])
@@ -61,3 +62,48 @@ async def screen_stocks(
     _cache[cache_key] = (time.time(), result)
 
     return {"source": "live", "count": len(result), "stocks": result[:limit]}
+
+
+class ScreenerRunRequest(BaseModel):
+    strategy: Optional[str] = None
+    min_change_pct: Optional[float] = None
+    max_change_pct: Optional[float] = None
+    min_volume_lot: Optional[int] = 500
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
+    sort_by: str = "volume_lot"
+    limit: int = 50
+
+
+@router.post("/api/screener/run")
+async def run_screener(body: ScreenerRunRequest):
+    """POST 版選股掃描，支援動能因子（momentum_20d）、籌碼因子（foreign_consec）。"""
+    criteria = {
+        "min_change_pct": body.min_change_pct,
+        "max_change_pct": body.max_change_pct,
+        "min_volume_lot": body.min_volume_lot,
+        "min_price": body.min_price,
+        "max_price": body.max_price,
+    }
+    cache_key = hashlib.md5(
+        json.dumps({"strategy": body.strategy, **criteria}, sort_keys=True).encode()
+    ).hexdigest()
+
+    if cache_key in _cache:
+        ts, result = _cache[cache_key]
+        if time.time() - ts < CACHE_TTL:
+            return {"source": "cache", "count": len(result), "stocks": result[:body.limit]}
+
+    df = await fetch_market_snapshot()
+    df = apply_basic_filters(df, {k: v for k, v in criteria.items() if v is not None})
+
+    if body.strategy:
+        df = await apply_tech_filters(df, body.strategy)
+
+    valid_sort = body.sort_by if body.sort_by in df.columns else "volume_lot"
+    df = df.sort_values(valid_sort, ascending=False)
+
+    result = df[["symbol", "name", "close", "change", "change_pct", "volume_lot"]].to_dict("records")
+    _cache[cache_key] = (time.time(), result)
+
+    return {"source": "live", "count": len(result), "stocks": result[:body.limit]}
