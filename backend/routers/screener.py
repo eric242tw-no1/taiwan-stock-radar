@@ -75,35 +75,19 @@ class ScreenerRunRequest(BaseModel):
     limit: int = 50
 
 
-@router.post("/api/screener/run")
-async def run_screener(body: ScreenerRunRequest):
-    """POST 版選股掃描，支援動能因子（momentum_20d）、籌碼因子（foreign_consec）。"""
-    criteria = {
+@router.post("/api/screener/run", status_code=202)
+async def run_screener_async(body: ScreenerRunRequest):
+    """Enqueue screener job via Celery; returns task_id for polling."""
+    from celery_tasks import run_screener as _run_screener_task
+    params = {
+        "strategy": body.strategy,
         "min_change_pct": body.min_change_pct,
         "max_change_pct": body.max_change_pct,
         "min_volume_lot": body.min_volume_lot,
         "min_price": body.min_price,
         "max_price": body.max_price,
+        "sort_by": body.sort_by,
+        "limit": body.limit,
     }
-    cache_key = hashlib.md5(
-        json.dumps({"strategy": body.strategy, **criteria}, sort_keys=True).encode()
-    ).hexdigest()
-
-    if cache_key in _cache:
-        ts, result = _cache[cache_key]
-        if time.time() - ts < CACHE_TTL:
-            return {"source": "cache", "count": len(result), "stocks": result[:body.limit]}
-
-    df = await fetch_market_snapshot()
-    df = apply_basic_filters(df, {k: v for k, v in criteria.items() if v is not None})
-
-    if body.strategy:
-        df = await apply_tech_filters(df, body.strategy)
-
-    valid_sort = body.sort_by if body.sort_by in df.columns else "volume_lot"
-    df = df.sort_values(valid_sort, ascending=False)
-
-    result = df[["symbol", "name", "close", "change", "change_pct", "volume_lot"]].to_dict("records")
-    _cache[cache_key] = (time.time(), result)
-
-    return {"source": "live", "count": len(result), "stocks": result[:body.limit]}
+    task = _run_screener_task.delay(params)
+    return {"task_id": task.id, "status": "queued"}

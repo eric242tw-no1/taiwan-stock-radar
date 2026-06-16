@@ -10,8 +10,9 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 
-import psycopg2
 import redis
+
+from db import get_conn
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +29,6 @@ def _get_redis() -> redis.Redis:
     if _redis_client is None:
         _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
     return _redis_client
-
-
-def _get_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        dbname=os.getenv("POSTGRES_DB", "stockradar"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "stockradar_pass"),
-    )
 
 
 def _ttl_until_tomorrow_9am() -> int:
@@ -75,30 +66,17 @@ def _save_to_redis(symbol: str, trade_date: str, data: dict):
 
 
 def _save_to_db(symbol: str, trade_date: str, data: dict):
-    sql = """
-        INSERT INTO daily_ai_report
-            (symbol, date, ai_score, suggestion, summary, key_points, cached_at)
-        VALUES (%(symbol)s, %(date)s, %(ai_score)s, %(suggestion)s, %(summary)s, %(key_points)s, NOW())
-        ON CONFLICT (symbol, date) DO UPDATE SET
-            ai_score   = EXCLUDED.ai_score,
-            suggestion = EXCLUDED.suggestion,
-            summary    = EXCLUDED.summary,
-            key_points = EXCLUDED.key_points,
-            cached_at  = NOW();
-    """
     try:
-        with _get_conn() as conn, conn.cursor() as cur:
-            cur.execute(sql, {
-                "symbol":     symbol,
-                "date":       trade_date,
-                "ai_score":   data.get("composite"),
-                "suggestion": data.get("suggestion"),
-                "summary":    data.get("summary"),
-                "key_points": json.dumps(data.get("key_points", []), ensure_ascii=False),
-            })
-            conn.commit()
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO analysis_history (symbol, ai_score, suggestion, ai_summary, created_at) "
+            "VALUES (?, ?, ?, ?, datetime('now'))",
+            (symbol, data.get("composite"), data.get("suggestion"), data.get("summary")),
+        )
+        conn.commit()
+        conn.close()
     except Exception as e:
-        logger.warning("DB write for daily_ai_report failed: %s", e)
+        logger.warning("DB write for analysis_history failed: %s", e)
 
 
 def _build_prompt(symbol: str, ind: dict, chip_latest: dict, quote: dict | None) -> str:
@@ -190,10 +168,7 @@ def _call_llm(symbol: str, ind: dict, chip: dict | None, quote: dict | None) -> 
     chip_latest = (chip or {}).get("latest", {})
     prompt = _build_prompt(symbol, ind, chip_latest, quote)
 
-    if ANTHROPIC_API_KEY and ANTHROPIC_API_KEY not in ("placeholder", ""):
-        result = _call_anthropic(prompt)
-        result["provider"] = "claude"
-    elif DEEPSEEK_API_KEY and DEEPSEEK_API_KEY not in ("placeholder", ""):
+    if DEEPSEEK_API_KEY and DEEPSEEK_API_KEY not in ("placeholder", ""):
         result = _call_deepseek(prompt)
         result["provider"] = "deepseek"
     elif GEMINI_API_KEY and GEMINI_API_KEY not in ("placeholder", ""):

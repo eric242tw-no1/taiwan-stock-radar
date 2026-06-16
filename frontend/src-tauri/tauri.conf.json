@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "identifier": "com.taiwan.ai.stock.radar",
   "build": {
-    "devUrl": "http://localhost:3000",
-    "frontendDist": "../out",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "devUrl": "http://localhost:3002",
+    "frontendDist": "http://localhost:3002",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [

@@ -87,23 +87,16 @@ class SelfAudit:
     def _check_data(self, today: str) -> list[str]:
         """確認 stock_pool 內的股票當日都有 indicators 記錄"""
         try:
-            import psycopg2
-            import os
-            conn = psycopg2.connect(
-                host=os.getenv("POSTGRES_HOST", "postgres"),
-                port=int(os.getenv("POSTGRES_PORT", "5432")),
-                dbname=os.getenv("POSTGRES_DB", "stockradar"),
-                user=os.getenv("POSTGRES_USER", "admin"),
-                password=os.getenv("POSTGRES_PASSWORD", "stockradar_pass"),
-            )
+            from db import get_conn
+            conn = get_conn()
             cur = conn.cursor()
-            cur.execute("SELECT symbol FROM stock_pool WHERE enabled = true")
+            cur.execute("SELECT symbol FROM stock_pool WHERE enabled = 1")
             pool = {r[0] for r in cur.fetchall()}
             cur.execute(
-                "SELECT DISTINCT symbol FROM stock_indicators_daily WHERE date = %s",
+                "SELECT DISTINCT ticker FROM stock_indicators_daily WHERE trade_date = ?",
                 (today,),
             )
-            have = {r[0] for r in cur.fetchall()}
+            have = {r[0].replace(".TW", "") for r in cur.fetchall()}
             conn.close()
             return list(pool - have)
         except Exception as e:
@@ -148,20 +141,14 @@ class SelfAudit:
             return False
 
     def _check_indicators(self, today: str) -> list[str]:
-        """同 _check_data，但只看 rsi/macd 是否為 NULL"""
+        """同 _check_data，但只看 rsi14/macd 是否為 NULL"""
         try:
-            import psycopg2, os
-            conn = psycopg2.connect(
-                host=os.getenv("POSTGRES_HOST", "postgres"),
-                port=int(os.getenv("POSTGRES_PORT", "5432")),
-                dbname=os.getenv("POSTGRES_DB", "stockradar"),
-                user=os.getenv("POSTGRES_USER", "admin"),
-                password=os.getenv("POSTGRES_PASSWORD", "stockradar_pass"),
-            )
+            from db import get_conn
+            conn = get_conn()
             cur = conn.cursor()
             cur.execute(
-                "SELECT symbol FROM stock_indicators_daily "
-                "WHERE date = %s AND (rsi IS NULL OR macd IS NULL)",
+                "SELECT ticker FROM stock_indicators_daily "
+                "WHERE trade_date = ? AND (rsi14 IS NULL OR macd IS NULL)",
                 (today,),
             )
             result = [r[0] for r in cur.fetchall()]

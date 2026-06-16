@@ -142,8 +142,12 @@ def _check_ma20_breakout(hist: pd.DataFrame) -> bool:
 def _check_rsi_oversold(hist: pd.DataFrame) -> bool:
     if len(hist) < 16:
         return False
-    rsi = _calc_rsi(hist["close"], 14)
-    return rsi.iloc[-1] > 30 and rsi.iloc[-2] <= 30
+    from factor_engine import technical as fe_tech
+    factors = fe_tech.compute("", hist)
+    if factors.rsi_14 is None:
+        return False
+    rsi_prev = _calc_rsi(hist["close"], 14).iloc[-2]
+    return factors.rsi_14 > 30 and float(rsi_prev) <= 30
 
 
 def _check_momentum_20d(hist: pd.DataFrame) -> bool:

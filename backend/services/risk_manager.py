@@ -8,8 +8,7 @@ import logging
 import os
 from dataclasses import dataclass
 
-import psycopg2
-import psycopg2.extras
+from db import get_conn
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +20,6 @@ class RiskDecision:
     detail: dict | None = None
 
 
-def _get_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        dbname=os.getenv("POSTGRES_DB", "stockradar"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "stockradar_pass"),
-    )
-
-
 class RiskManager:
 
     def check_position_size(self, symbol: str, size: int, capital: float) -> RiskDecision:
@@ -40,12 +29,14 @@ class RiskManager:
         capital: total account capital in TWD
         """
         try:
-            with _get_conn() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "SELECT close FROM daily_price WHERE symbol=%s ORDER BY date DESC LIMIT 1",
-                    (symbol,),
-                )
-                row = cur.fetchone()
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT close FROM daily_price WHERE symbol=? ORDER BY date DESC LIMIT 1",
+                (symbol,),
+            )
+            row = cur.fetchone()
+            conn.close()
         except Exception as exc:
             logger.warning("check_position_size DB error: %s", exc)
             return RiskDecision(approved=True, reason="無法取得價格，跳過檢查")
@@ -73,12 +64,12 @@ class RiskManager:
         """
         try:
             if account is None:
-                with _get_conn() as conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(
-                        "SELECT total_value, daily_pnl FROM account_snapshots ORDER BY date DESC LIMIT 1"
-                    )
-                    row = cur.fetchone()
-                    account = dict(row) if row else {}
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT total_value, daily_pnl FROM account_snapshots ORDER BY date DESC LIMIT 1")
+                row = cur.fetchone()
+                account = dict(row) if row else {}
+                conn.close()
         except Exception as exc:
             logger.warning("check_max_drawdown DB error: %s", exc)
             return RiskDecision(approved=True, reason="無法取得帳戶資料，跳過檢查")

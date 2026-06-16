@@ -1,18 +1,89 @@
+import json
 import logging
+import os
 
 from fastapi import APIRouter, Query
 
+from db import get_conn
 from services.risk_manager import RiskDecision, RiskManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 
 _rm = RiskManager()
+_ATR_CACHE_TTL = 300  # seconds
+
+
+def _get_redis():
+    import redis
+    return redis.Redis(
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        decode_responses=True,
+    )
+
+
+@router.get("/atr-stop/{symbol}")
+async def get_atr_stop(
+    symbol: str,
+    multiplier: float = Query(2.0, description="ATR 倍數（停損距離 = ATR × multiplier）"),
+    entry_price: float = Query(None, description="進場價（省略則用最新收盤價）"),
+):
+    cache_key = f"atr_stop:{symbol}:{multiplier}"
+    try:
+        r = _get_redis()
+        cached = r.get(cache_key)
+        if cached and entry_price is None:
+            return json.loads(cached)
+    except Exception:
+        pass
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT close, high, low FROM daily_price WHERE symbol=? ORDER BY date DESC LIMIT 20",
+            (symbol,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"DB 讀取失敗: {exc}")
+
+    if len(rows) < 15:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"股票 {symbol} 歷史資料不足")
+
+    import pandas as pd
+    df = pd.DataFrame(rows, columns=["close", "high", "low"])
+    high_low = df["high"] - df["low"]
+    high_close = (df["high"] - df["close"].shift(-1)).abs()
+    low_close = (df["low"] - df["close"].shift(-1)).abs()
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    atr_14 = float(tr.head(14).mean())
+
+    ref_price = entry_price if entry_price else float(df["close"].iloc[0])
+    stop_loss = round(ref_price - atr_14 * multiplier, 2)
+    stop_pct = round((ref_price - stop_loss) / ref_price * 100, 2)
+
+    result = {
+        "symbol": symbol, "atr_14": round(atr_14, 4),
+        "multiplier": multiplier, "ref_price": ref_price,
+        "stop_loss": stop_loss, "stop_pct": stop_pct,
+    }
+
+    try:
+        r = _get_redis()
+        r.setex(cache_key, _ATR_CACHE_TTL, json.dumps(result))
+    except Exception:
+        pass
+
+    return result
 
 
 @router.get("/watching")
 async def get_watching():
-    """StopLossGuard 目前監控中的股票清單（Layer 2 輪詢備援）"""
     from main import stop_loss_guard
     return {"watching": stop_loss_guard.watching}
 
@@ -24,13 +95,6 @@ async def get_risk_assessment(
     capital: float = Query(1_000_000, description="總資金（元）"),
     portfolio: str = Query("", description="逗號分隔的已持倉股票代號"),
 ):
-    """
-    對指定股票執行三項風控檢查，回傳 RiskDecision 彙整結果。
-
-    - check_position_size：單股倉位不超過總資金 20%
-    - check_max_drawdown：當日虧損不超過 5%
-    - check_correlation_risk：與持倉股票相關性 < 0.8
-    """
     held = [s.strip() for s in portfolio.split(",") if s.strip()]
 
     checks = {

@@ -457,3 +457,20 @@ async def get_correlation():
     if data:
         return data
     return {"date": None, "tw_us_corr_30d": None, "tw_us_corr_60d": None, "tw_us_corr_90d": None}
+
+
+
+@router.get("/sector-rotation")
+def get_sector_rotation():
+    """產業輪動排行（composite_score = 0.5×mom4w + 0.3×mom8w + 0.2×mom13w），每週快取。"""
+    import json, os
+    import redis as redis_lib
+    from agents.sector_rotation_agent import REDIS_KEY
+    try:
+        r = redis_lib.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+        raw = r.get(REDIS_KEY)
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return {"computed_at": None, "sectors": [], "message": "No data yet — run sector rotation job first"}

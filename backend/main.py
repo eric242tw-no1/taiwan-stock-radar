@@ -1,4 +1,6 @@
 import logging
+import os
+import sqlite3
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()  # 讀取 backend/.env
@@ -7,25 +9,41 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import market, stock, portfolio, alerts, analysis, backtest, screener, webhook, stock_pool, stream
+from routers import market, stock, portfolio, alerts, analysis, backtest, screener, webhook, stock_pool, stream, reports, tasks as tasks_router, health as health_router
 import routers.risk as risk_router
+import routers.strategies as strategies_router
+import routers.workflow as workflow_router
+import routers.journal as journal_router
+import routers.analytics as analytics_router
 from services.data_fetcher import fetch_us_indices
 from services.twse_fetcher import fetch_tw_market
 from services.taifex_fetcher import fetch_futures_and_fx
 from services.finmind_fetcher import fetch_chip_summary
-from services.indicator_service import ensure_table, load_cache_from_db, calculate_and_store
-from services.stock_pool_service import ensure_table as ensure_pool_table
-from services.portfolio_service import ensure_table as ensure_portfolio_table
+from services.indicator_service import load_cache_from_db, calculate_and_store
 from services.sector_fetcher import fetch_sectors
 from services.gov_fund_fetcher import fetch_gov_funds
 from services.buffett_fetcher import fetch_buffett
 from services.tdcc_fetcher import ensure_table as ensure_tdcc_table, fetch_all_pool_tdcc
-from services.correlation_service import ensure_table as ensure_macro_table, calculate_and_store as calc_correlation
-from services.webhook_tables import ensure_tables as ensure_webhook_tables
+from services.correlation_service import calculate_and_store as calc_correlation
 from agents.self_audit import SelfAudit
 from agents.alert_agent import run_check_alerts_sync
 from brokers.yuanta import YuantaBroker
 from agents.stop_loss_guard import StopLossGuard
+
+
+def _init_db() -> None:
+    """Run schema_sqlite.sql on startup to create all tables (idempotent)."""
+    from db import get_conn
+    schema_path = os.path.join(os.path.dirname(__file__), "schema_sqlite.sql")
+    with open(schema_path, encoding="utf-8") as f:
+        sql = f.read()
+    conn = get_conn()
+    try:
+        conn.executescript(sql)
+        conn.commit()
+        logger.info("SQLite schema initialised")
+    finally:
+        conn.close()
 
 _self_audit = SelfAudit()
 
@@ -46,10 +64,50 @@ def _tw_market_and_alerts() -> None:
         logger.warning("Alert check error: %s", exc)
 
 
+def _morning_brief_sync() -> None:
+    """08:30 weekdays — generate morning brief via Claude API."""
+    import asyncio
+    from agents.morning_brief_agent import generate_morning_brief
+    asyncio.run(generate_morning_brief())
+
+
+def _chip_and_anomaly_sync() -> None:
+    """09:05 weekdays — fetch chip data then scan anomalies."""
+    import asyncio
+    from agents.market_anomaly_agent import scan_anomalies
+    try:
+        fetch_chip_summary()
+    except Exception as exc:
+        logger.warning("chip fetch at 09:05: %s", exc)
+    asyncio.run(scan_anomalies())
+
+
+def _scan_anomalies_sync() -> None:
+    """09:10–13:20 every 10 min weekdays — anomaly scan."""
+    import asyncio
+    from agents.market_anomaly_agent import scan_anomalies
+    asyncio.run(scan_anomalies())
+
+
+def _factor_scan_and_batch_score() -> None:
+    """13:35 weekdays — factor scan + AI batch scoring via Celery + account snapshot."""
+    from celery_tasks import score_symbol
+    from services.stock_pool_service import get_pool
+    try:
+        symbols = [s["symbol"] for s in get_pool()]
+        for sym in symbols:
+            score_symbol.delay(sym)
+        logger.info("factor_scan: enqueued %d symbols for AI scoring", len(symbols))
+    except Exception as exc:
+        logger.warning("factor_scan: %s", exc)
+    _take_account_snapshot()
+
+
 def _take_account_snapshot() -> None:
     """13:35 每日帳戶快照 — 收盤後寫入 account_snapshots 表。"""
-    import asyncio, os, psycopg2
+    import asyncio
     from datetime import date
+    from db import get_conn
 
     async def _snapshot():
         try:
@@ -65,21 +123,15 @@ def _take_account_snapshot() -> None:
 
         sql = """
         INSERT INTO account_snapshots (date, total_value, cash, daily_pnl, margin_usage)
-        VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (date) DO UPDATE
-            SET total_value=EXCLUDED.total_value, cash=EXCLUDED.cash,
-                daily_pnl=EXCLUDED.daily_pnl, margin_usage=EXCLUDED.margin_usage
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (date) DO UPDATE SET
+            total_value=excluded.total_value, cash=excluded.cash,
+            daily_pnl=excluded.daily_pnl, margin_usage=excluded.margin_usage
         """
         try:
-            conn = psycopg2.connect(
-                host=os.getenv("POSTGRES_HOST", "postgres"),
-                port=int(os.getenv("POSTGRES_PORT", "5432")),
-                dbname=os.getenv("POSTGRES_DB", "stockradar"),
-                user=os.getenv("POSTGRES_USER", "admin"),
-                password=os.getenv("POSTGRES_PASSWORD", "stockradar_pass"),
-            )
-            with conn, conn.cursor() as cur:
-                cur.execute(sql, (date.today(), total_value, cash, daily_pnl, margin_usage))
+            conn = get_conn()
+            conn.execute(sql, (str(date.today()), total_value, cash, daily_pnl, margin_usage))
+            conn.commit()
             conn.close()
             logger.info("account snapshot saved: total_value=%.0f", total_value)
         except Exception as exc:
@@ -115,13 +167,9 @@ scheduler = BackgroundScheduler(timezone="Asia/Taipei")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # DB setup
-    ensure_pool_table()
-    ensure_portfolio_table()
-    ensure_table()
+    # DB setup — single SQLite schema init replaces all per-service ensure_* calls
+    _init_db()
     ensure_tdcc_table()
-    ensure_macro_table()
-    ensure_webhook_tables()
     load_cache_from_db()
 
     # warm up caches on startup
@@ -178,13 +226,46 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _stop_loss_polling_sync, "interval", minutes=1, id="stop_loss_polling",
     )
-    # 帳戶快照：收盤後 13:35 寫入 account_snapshots（Change D）
+    # 帳戶快照：由 _factor_scan_and_batch_score 在 13:35 呼叫（Change B）
+
+    # Change B: Morning Brief — 08:30 週一～週五
     scheduler.add_job(
-        _take_account_snapshot, "cron",
-        hour=13, minute=35, day_of_week="mon-fri", id="account_snapshot",
+        _morning_brief_sync, "cron",
+        hour=8, minute=30, day_of_week="mon-fri", id="morning_brief",
+        misfire_grace_time=300,
     )
+    # Change B: 09:05 Chip fetch + 首次異常掃描
+    scheduler.add_job(
+        _chip_and_anomaly_sync, "cron",
+        hour=9, minute=5, day_of_week="mon-fri", id="chip_and_anomaly_open",
+        misfire_grace_time=300,
+    )
+    # Change B: 09:10–13:20 每 10 分鐘異常掃描
+    scheduler.add_job(
+        _scan_anomalies_sync, "cron",
+        hour="9-13", minute="10,20,30,40,50", day_of_week="mon-fri", id="anomaly_intraday",
+        misfire_grace_time=300,
+    )
+    # Change B: 13:35 Factor scan + AI batch scoring + account snapshot
+    scheduler.add_job(
+        _factor_scan_and_batch_score, "cron",
+        hour=13, minute=35, day_of_week="mon-fri", id="factor_scan_and_snapshot",
+        misfire_grace_time=300,
+    )
+    # Apply misfire_grace_time=300 to existing jobs
+    for job_id in ["chip_refresh", "indicator_refresh", "sectors_refresh", "gov_funds_refresh",
+                   "self_audit", "correlation_refresh", "tdcc_refresh"]:
+        try:
+            scheduler.modify_job(job_id, misfire_grace_time=300)
+        except Exception:
+            pass
     scheduler.start()
-    logger.info("APScheduler started — us:5min  tw:10s  futures_fx:1min  chip:14:35  indicators:15:05  sectors:15:10  gov:15:15  corr:15:15  audit:16:30  tdcc:sat10:00  stoploss:1min  snapshot:13:35")
+    logger.info(
+        "APScheduler started — us:5min  tw:10s  futures_fx:1min  "
+        "morning_brief:08:30  chip+anomaly:09:05  anomaly:09:10-13:20×10min  "
+        "factor+snapshot:13:35  chip:14:35  indicators:15:05  sectors:15:10  "
+        "gov:15:15  corr:15:15  audit:16:30  tdcc:sat10:00  stoploss:1min"
+    )
 
     yield
 
@@ -201,8 +282,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", "http://localhost:3001",
-        "http://127.0.0.1:3000", "http://127.0.0.1:3001",
+        "http://localhost:3000", "http://localhost:3001", "http://localhost:3002",
+        "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002",
         "http://frontend:3000",
         "https://exact-pupil-snowfield.ngrok-free.dev",
     ],
@@ -211,6 +292,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health_router.router, prefix="/api")
 app.include_router(market.router)
 app.include_router(stock.router)
 app.include_router(portfolio.router)
@@ -222,6 +304,12 @@ app.include_router(webhook.router)
 app.include_router(stock_pool.router)
 app.include_router(stream.router)
 app.include_router(risk_router.router)
+app.include_router(reports.router)
+app.include_router(tasks_router.router)
+app.include_router(strategies_router.router)
+app.include_router(workflow_router.router, prefix="/api/workflow")
+app.include_router(journal_router.router, prefix="/api/journal")
+app.include_router(analytics_router.router, prefix="/api/analytics")
 
 
 @app.get("/")

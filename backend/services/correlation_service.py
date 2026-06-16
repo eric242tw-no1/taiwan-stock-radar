@@ -4,33 +4,20 @@
 結果存入 macro_indicators table，每日 15:15 更新
 """
 import logging
-import os
-import sqlite3
 from datetime import datetime, timedelta, timezone
+
+from db import get_conn
 
 logger = logging.getLogger(__name__)
 
 _TW = timezone(timedelta(hours=8))
-_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "cache.db")
 
 
 def ensure_table() -> None:
-    con = sqlite3.connect(_DB_PATH)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS macro_indicators (
-            date            TEXT PRIMARY KEY,
-            tw_us_corr_30d  REAL,
-            tw_us_corr_60d  REAL,
-            tw_us_corr_90d  REAL,
-            updated_at      TEXT
-        )
-    """)
-    con.commit()
-    con.close()
+    pass  # schema managed by schema_sqlite.sql
 
 
 def calculate_and_store() -> dict | None:
-    """下載近 120 天資料，計算三個滾動相關係數，寫入 DB，回傳最新結果。"""
     try:
         import yfinance as yf
         import pandas as pd
@@ -74,25 +61,27 @@ def calculate_and_store() -> dict | None:
 
 
 def _save(date: str, r30: float, r60: float | None, r90: float | None) -> None:
-    con = sqlite3.connect(_DB_PATH)
-    con.execute(
-        """INSERT OR REPLACE INTO macro_indicators
-           (date, tw_us_corr_30d, tw_us_corr_60d, tw_us_corr_90d, updated_at)
-           VALUES (?,?,?,?,datetime('now'))""",
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO macro_indicators "
+        "(date, tw_us_corr_30d, tw_us_corr_60d, tw_us_corr_90d, updated_at) "
+        "VALUES (?,?,?,?,datetime('now'))",
         (date, round(r30, 4), round(r60, 4) if r60 else None, round(r90, 4) if r90 else None),
     )
-    con.commit()
-    con.close()
+    conn.commit()
+    conn.close()
 
 
 def get_latest() -> dict | None:
-    """讀取最新一筆相關係數（前端 API 使用）。"""
     try:
-        con = sqlite3.connect(_DB_PATH)
-        row = con.execute(
-            "SELECT date, tw_us_corr_30d, tw_us_corr_60d, tw_us_corr_90d FROM macro_indicators ORDER BY date DESC LIMIT 1"
-        ).fetchone()
-        con.close()
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, tw_us_corr_30d, tw_us_corr_60d, tw_us_corr_90d "
+            "FROM macro_indicators ORDER BY date DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        conn.close()
         if row:
             return {"date": row[0], "tw_us_corr_30d": row[1], "tw_us_corr_60d": row[2], "tw_us_corr_90d": row[3]}
     except Exception:

@@ -12,10 +12,10 @@ import httpx
 
 # AI_PROVIDER=local  → 本機路由器（開發期免費）
 # AI_PROVIDER=anthropic → Claude API（正式上線）
+DEEPSEEK_API_KEY  = os.getenv("DEEPSEEK_API_KEY", "")
 AI_PROVIDER       = os.getenv("AI_PROVIDER",
-    "anthropic" if os.getenv("ANTHROPIC_API_KEY", "") not in ("", "placeholder") else "local"
+    "deepseek" if DEEPSEEK_API_KEY not in ("", "placeholder") else "local"
 )
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 LOCAL_BASE_URL    = os.getenv("LOCAL_AI_BASE_URL", "http://127.0.0.1:3001/v1")
 LOCAL_MODEL       = os.getenv("LOCAL_AI_MODEL", "auto")
 LOCAL_API_KEY     = os.getenv("LOCAL_AI_API_KEY", "not-needed")
@@ -236,8 +236,8 @@ async def call_claude(context: dict) -> dict:
     """
     user_msg = f"請分析以下台股資料，輸出純 JSON：\n\n{json.dumps(context, ensure_ascii=False, indent=2)}"
 
-    if AI_PROVIDER == "anthropic":
-        raw = await _call_anthropic(user_msg)
+    if AI_PROVIDER == "deepseek":
+        raw = await _call_deepseek(user_msg)
     else:
         raw = await _call_local(user_msg)
 
@@ -249,16 +249,18 @@ async def call_claude(context: dict) -> dict:
     return json.loads(raw)
 
 
-async def _call_anthropic(user_msg: str) -> str:
-    import anthropic
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    msg = await client.messages.create(
-        model="claude-sonnet-4-6",
+async def _call_deepseek(user_msg: str) -> str:
+    import openai
+    client = openai.AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+    resp = await client.chat.completions.create(
+        model="deepseek-chat",
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": user_msg},
+        ],
     )
-    return msg.content[0].text
+    return resp.choices[0].message.content
 
 
 async def _call_local(user_msg: str) -> str:
@@ -328,8 +330,8 @@ async def devil_advocate(
     )
     try:
         async with asyncio.timeout(10):
-            if AI_PROVIDER == "anthropic":
-                raw = await _call_anthropic(prompt)
+            if AI_PROVIDER == "deepseek":
+                raw = await _call_deepseek(prompt)
             else:
                 raw = await _call_local(prompt)
         # extract JSON from response

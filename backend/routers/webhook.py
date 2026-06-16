@@ -19,13 +19,12 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-import psycopg2
-import psycopg2.extras
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from utils.telegram import send_message
 from utils.webhook_auth import verify_hmac
+from db import get_conn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["webhook"])
@@ -41,16 +40,6 @@ except Exception:
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 
-def _get_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        dbname=os.getenv("POSTGRES_DB", "stockradar"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "stockradar_pass"),
-    )
-
-
 def _insert_tv_signal(
     strategy_id: str,
     symbol: str,
@@ -65,24 +54,28 @@ def _insert_tv_signal(
     INSERT INTO tv_signals
         (strategy_id, symbol, target_position, actual_position, diff,
          dedup_key, status, ai_confidence)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    RETURNING id
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """
-    with _get_conn() as conn, conn.cursor() as cur:
-        cur.execute(sql, (
-            strategy_id, symbol, target_position, actual_position, diff,
-            dedup_key, status, ai_confidence,
-        ))
-        signal_id = cur.fetchone()[0]
-        conn.commit()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(sql, (
+        strategy_id, symbol, target_position, actual_position, diff,
+        dedup_key, status, ai_confidence,
+    ))
+    signal_id = cur.lastrowid
+    conn.commit()
+    conn.close()
     return signal_id
 
 
 def _update_tv_signal(signal_id: int, status: str, ai_confidence: float | None = None) -> None:
-    sql = "UPDATE tv_signals SET status=%s, ai_confidence=%s, executed_at=NOW() WHERE id=%s"
-    with _get_conn() as conn, conn.cursor() as cur:
-        cur.execute(sql, (status, ai_confidence, signal_id))
-        conn.commit()
+    conn = get_conn()
+    conn.execute(
+        "UPDATE tv_signals SET status=?, ai_confidence=?, executed_at=datetime('now') WHERE id=?",
+        (status, ai_confidence, signal_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def _insert_order(
@@ -94,13 +87,14 @@ def _insert_order(
     status: str,
     broker_order_id: str | None,
 ) -> None:
-    sql = """
-    INSERT INTO orders (tv_signal_id, symbol, action, quantity, price, status, broker_order_id)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """
-    with _get_conn() as conn, conn.cursor() as cur:
-        cur.execute(sql, (signal_id, symbol, action, quantity, price, status, broker_order_id))
-        conn.commit()
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO orders (tv_signal_id, symbol, action, quantity, price, status, broker_order_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (signal_id, symbol, action, quantity, price, status, broker_order_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── Redis dedup ───────────────────────────────────────────────────────────────
@@ -258,6 +252,18 @@ async def tradingview_webhook(request: Request):
         order_status = "error"
         logger.error("webhook order failed: %s", exc)
 
+    # 推播訊號至 SSE stream（供前端 useSignalStream 使用）
+    if _redis is not None:
+        try:
+            import json as _json
+            await _redis.publish("tv_signals", _json.dumps({
+                "signal_id": signal_id, "symbol": symbol, "action": action,
+                "quantity": quantity, "ai_confidence": ai_confidence,
+                "order_status": order_status, "timestamp": _tw_now(),
+            }, ensure_ascii=False))
+        except Exception as _pub_exc:
+            logger.warning("webhook: Redis publish failed — %s", _pub_exc)
+
     await send_message(
         f"{'📈' if action == 'buy' else '📉'} <b>[Webhook] {action.upper()}</b>\n"
         f"股票：<b>{symbol}</b>　數量：{quantity} 股\n"
@@ -276,15 +282,46 @@ async def tradingview_webhook(request: Request):
     }
 
 
+class TVLegacyPayload(BaseModel):
+    symbol: str
+    action: str      # "buy" | "sell"
+    quantity: int
+    price: float | None = None
+    strategy_id: str = "legacy"
+
+
+@router.post("/api/webhook/tradingview-legacy")
+async def tradingview_webhook_legacy(payload: TVLegacyPayload):
+    """
+    Action-based legacy webhook (deprecated 2026-06-13).
+    Scheduled for removal 2026-06-20. Migrate to /api/webhook/tradingview.
+    """
+    logger.warning(
+        "DEPRECATED: /tradingview-legacy called for %s %s x%d — "
+        "please migrate to /api/webhook/tradingview",
+        payload.action, payload.symbol, payload.quantity,
+    )
+    symbol = _clean_symbol(payload.symbol)
+    return {
+        "status": "legacy_received",
+        "symbol": symbol,
+        "action": payload.action,
+        "quantity": payload.quantity,
+        "warning": "This endpoint is deprecated. Migrate to /api/webhook/tradingview with target_position.",
+        "migration_deadline": "2026-06-20",
+    }
+
+
 @router.get("/api/webhook/signals")
 def get_signals(limit: int = 20):
     """最近的 webhook 信號記錄（從 DB 查詢）。"""
     try:
-        with _get_conn() as conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT * FROM tv_signals ORDER BY created_at DESC LIMIT %s", (limit,)
-            )
-            return cur.fetchall()
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM tv_signals ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return rows
     except Exception as exc:
         logger.error("get_signals failed: %s", exc)
         return []
