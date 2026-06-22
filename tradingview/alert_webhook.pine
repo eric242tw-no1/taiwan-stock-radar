@@ -1,0 +1,39 @@
+//@version=5
+indicator("TW Stock Radar — Webhook 設定說明", overlay=true)
+
+// ── Webhook 設定說明 ───────────────────────────────────────────────────────────
+//
+// 1. 在 TradingView 建立 Alert 時，「Notifications」分頁勾選「Webhook URL」
+//
+// 2. 填入後端 Webhook URL：
+//    https://<YOUR_DOMAIN>/api/webhook/tradingview
+//
+// 3. Alert Message 使用以下 JSON 格式（需替換 secret 為實際 HMAC 密鑰）：
+//
+//    {
+//      "strategy_id": "<STRATEGY_ID>",
+//      "symbol":      "{{ticker}}",
+//      "secret":      "<HMAC_SECRET>",
+//      "target_position": 1,
+//      "timestamp":   {{timenow}}
+//    }
+//
+//    欄位說明：
+//      strategy_id      — 對應後端 /api/webhook/tradingview 驗證的策略 ID
+//      symbol           — TradingView 自動填入代碼，例如 TWSE:2330
+//      secret           — 與後端環境變數 WEBHOOK_SECRET 相同的 HMAC 密鑰
+//                         ⚠️ 請勿硬寫在 Pine Script 原始碼中，應從 TradingView
+//                            Settings → Alert Message 欄位注入
+//      target_position  — 1 = 買入/加碼；0 = 賣出/平倉；-1 = 放空
+//      timestamp        — {{timenow}} 為 TradingView 內建毫秒 Unix 時間戳
+//
+// 4. 後端 HMAC 驗證說明（backend/routers/webhook.py）：
+//    WEBHOOK_SECRET 環境變數須與 Alert Message 中的 secret 一致
+//    Redis 60 秒 dedup 防重複觸發
+//
+// 5. 本機測試（curl 範例）：
+//    curl -X POST http://localhost:8000/api/webhook/tradingview \
+//      -H "Content-Type: application/json" \
+//      -d '{"strategy_id":"TEST","symbol":"2330","secret":"<HMAC_SECRET>","target_position":1,"timestamp":1700000000000}'
+
+plot(na)

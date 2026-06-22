@@ -7,7 +7,7 @@ echo ========================================
 echo.
 
 :: ── 0. Check Docker Desktop ─────────────────────────────────────
-echo [0/5] Checking Docker Desktop...
+echo [0/3] Checking Docker Desktop...
 docker info >nul 2>&1
 if errorlevel 1 (
     echo       Docker not running. Starting Docker Desktop...
@@ -20,7 +20,7 @@ if errorlevel 1 (
     docker info >nul 2>&1
     if errorlevel 1 (
         if %tries% LSS 24 goto wait_docker
-        echo       [WARN] Docker not ready. Skipping Redis container...
+        echo       [WARN] Docker not ready. Skipping Redis...
         goto skip_docker
     )
     echo       Docker ready.
@@ -28,12 +28,11 @@ if errorlevel 1 (
     echo       Docker already running.
 )
 
-:: ── 1. Start Redis ────────────────────────────────────────────────
+:: ── 1. Start Redis only ───────────────────────────────────────────
 echo.
-echo [1/5] Starting Redis...
+echo [1/3] Starting Redis...
 docker-compose -f "%~dp0docker-compose.yml" up redis -d
 
-:: Wait for redis
 echo       Waiting for Redis...
 set /a rd_tries=0
 :wait_redis
@@ -55,7 +54,7 @@ echo       [SKIP] Redis skipped (Docker not available)
 
 :: ── 2. Start FastAPI Backend ─────────────────────────────────────
 echo.
-echo [2/5] Starting FastAPI backend (port 8000)...
+echo [2/3] Starting FastAPI backend (port 8000)...
 start "FastAPI Backend" powershell -NoExit -Command ^
   "cd 'C:\Users\ERIC\projects\taiwan-stock-radar\backend'; .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000 --reload"
 
@@ -74,34 +73,24 @@ if errorlevel 1 (
 
 :: ── 3. Start Next.js Frontend ────────────────────────────────────
 echo.
-echo [3/5] Starting Next.js frontend (port 3002)...
+echo [3/3] Starting Next.js frontend (port 3002)...
 start "Next.js Dev Server" powershell -NoExit -Command ^
   "cd 'C:\Users\ERIC\projects\taiwan-stock-radar\frontend'; npm run dev -- --hostname 127.0.0.1 -p 3002"
 
 timeout /t 5 /nobreak >nul
 
-:: ── 4. Start ngrok tunnel ────────────────────────────────────────
 echo.
-echo [4/5] Starting ngrok tunnel (port 3002)...
-start "ngrok Tunnel" powershell -NoExit -Command "ngrok http 127.0.0.1:3002"
-
-timeout /t 2 /nobreak >nul
-
-:: ── 5. Done ──────────────────────────────────────────────────────
-echo.
-echo [5/5] All services started!
+echo All services started!
 echo.
 echo   Services:
 echo   --------------------------------------------------
 echo   Frontend   http://localhost:3002
 echo   Backend    http://localhost:8000
 echo   API Docs   http://localhost:8000/docs
-echo   Flower     http://localhost:5555
-echo   ngrok      https://exact-pupil-snowfield.ngrok-free.dev
 echo   DB File    backend\data\stockradar.db
 echo   --------------------------------------------------
 echo.
-echo   To stop all services, run: stop-dev.bat
+echo   To stop, run: 停止開發環境.bat
 echo.
 pause
 endlocal

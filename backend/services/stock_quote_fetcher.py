@@ -3,8 +3,7 @@ Individual stock real-time quote from TWSE MIS.
 Supports both 上市 (tse) and 上櫃 (otc) stocks.
 """
 import logging
-import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -20,9 +19,6 @@ HEADERS = {
     "Referer": "https://mis.twse.com.tw/",
 }
 
-# 上櫃股票代號前綴（簡單規則：5碼、6開頭、8開頭）
-def _is_otc(symbol: str) -> bool:
-    return len(symbol) == 5 or symbol.startswith("6") or symbol.startswith("8")
 
 def _parse_num(s: str | None, default: float = 0.0) -> float:
     if not s or s in ("-", "--", ""):
@@ -32,58 +28,73 @@ def _parse_num(s: str | None, default: float = 0.0) -> float:
     except ValueError:
         return default
 
+
+def _query_exchange(symbol: str, exchange: str, client: httpx.Client) -> dict | None:
+    """Query MIS for one exchange; return raw item dict or None if no valid data."""
+    resp = client.get(MIS_URL, params={"ex_ch": f"{exchange}_{symbol}.tw", "json": "1", "delay": "0"})
+    resp.raise_for_status()
+    items = resp.json().get("msgArray", [])
+    if not items:
+        return None
+    item = items[0]
+    # MIS returns a placeholder record for wrong-exchange queries with no real name
+    name = item.get("n", "")
+    if not name or name == symbol:
+        return None
+    return item
+
+
 def fetch_stock_quote(symbol: str) -> dict[str, Any]:
     """
     Fetch real-time quote for a single stock.
+    Tries TSE first, then OTC as fallback (handles ambiguous 6xxx/8xxx codes).
     symbol: 股票代號，如 "2330"（不含 .TW）
     """
-    exchange = "otc" if _is_otc(symbol) else "tse"
-    ex_ch = f"{exchange}_{symbol}.tw"
-
     try:
         with httpx.Client(headers=HEADERS, timeout=8) as client:
-            resp = client.get(MIS_URL, params={"ex_ch": ex_ch, "json": "1", "delay": "0"})
-            resp.raise_for_status()
-            items = resp.json().get("msgArray", [])
+            item, exchange = None, "tse"
+            for ex in ("tse", "otc"):
+                item = _query_exchange(symbol, ex, client)
+                if item is not None:
+                    exchange = ex
+                    break
 
-        if not items:
+        if item is None:
             return _empty_quote(symbol)
 
-        item = items[0]
-        price      = _parse_num(item.get("z"))   # 當前價（盤中）
-        prev_close = _parse_num(item.get("y"))   # 昨收
+        price      = _parse_num(item.get("z"))
+        prev_close = _parse_num(item.get("y"))
         open_      = _parse_num(item.get("o"))
         high       = _parse_num(item.get("h"))
         low        = _parse_num(item.get("l"))
-        volume     = _parse_num(item.get("v"))   # 成交量（張）
+        volume     = _parse_num(item.get("v"))
         name       = item.get("n", symbol)
         update_time = item.get("t", "")
 
-        # 盤後 z 可能為 "-"，fallback 到 u（最後成交價）或 昨收
+        # 盤後 z 可能為 "-"，fallback 到 u（最後成交價）或昨收
         if price == 0:
             price = _parse_num(item.get("u"), prev_close)
 
         change = round(price - prev_close, 2) if price and prev_close else 0
         change_pct = round(change / prev_close * 100, 2) if prev_close else 0
 
-        # 量比：today_volume / 5日均量（MIS 沒直接提供，先用昨量 b 欄估算）
         yesterday_vol = _parse_num(item.get("b"))
         vol_ratio = round(volume / yesterday_vol, 2) if yesterday_vol > 0 else None
 
         return {
-            "symbol":      symbol,
-            "name":        name,
-            "exchange":    "上市" if exchange == "tse" else "上櫃",
-            "price":       round(price, 2),
-            "prev_close":  round(prev_close, 2),
-            "open":        round(open_, 2),
-            "high":        round(high, 2),
-            "low":         round(low, 2),
-            "change":      change,
-            "change_pct":  change_pct,
-            "volume":      int(volume),       # 張
-            "vol_ratio":   vol_ratio,
-            "update_time": update_time,
+            "symbol":        symbol,
+            "name":          name,
+            "exchange":      "上市" if exchange == "tse" else "上櫃",
+            "price":         round(price, 2),
+            "prev_close":    round(prev_close, 2),
+            "open":          round(open_, 2),
+            "high":          round(high, 2),
+            "low":           round(low, 2),
+            "change":        change,
+            "change_pct":    change_pct,
+            "volume":        int(volume),
+            "vol_ratio":     vol_ratio,
+            "update_time":   update_time,
             "market_status": _market_status(),
         }
     except Exception as e:

@@ -21,22 +21,46 @@ router = APIRouter(prefix="/api/stream", tags=["stream"])
 @router.get("/quote/{symbol}")
 async def stream_quote(symbol: str):
     """
-    SSE 推播個股即時報價，每 5 秒更新
+    SSE 推播個股即時報價。
+    優先使用 Shioaji Tick（SinopacBroker），fallback 至 TWSE MIS 每 5 秒輪詢。
     前端：const es = new EventSource('/api/stream/quote/2330')
     """
     sym = symbol.upper()
 
     async def generator():
-        from services.stock_quote_fetcher import fetch_stock_quote
-        while True:
+        from main import _broker
+        from brokers.sinopac import SinopacBroker
+
+        if isinstance(_broker, SinopacBroker):
+            # Shioaji Tick 模式：subscribe_tick 透過 callback 推入 Queue
+            q: asyncio.Queue = asyncio.Queue()
+            loop = asyncio.get_event_loop()
+
+            def _on_tick(tick: dict):
+                loop.call_soon_threadsafe(q.put_nowait, tick)
+
             try:
-                loop = asyncio.get_event_loop()
-                quote = await loop.run_in_executor(None, fetch_stock_quote, sym)
-                yield f"data: {json.dumps(quote, ensure_ascii=False)}\n\n"
+                _broker.subscribe_tick(sym, _on_tick)
+                while True:
+                    tick = await asyncio.wait_for(q.get(), timeout=30)
+                    yield f"event: tick\ndata: {json.dumps(tick, ensure_ascii=False)}\n\n"
+            except asyncio.TimeoutError:
+                yield f"event: tick\ndata: {json.dumps({'symbol': sym, 'error': 'tick timeout'})}\n\n"
             except Exception as e:
-                logger.warning("SSE quote error [%s]: %s", sym, e)
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            await asyncio.sleep(5)
+                logger.warning("SSE Shioaji tick error [%s]: %s", sym, e)
+                # fallthrough to polling below
+        else:
+            # TWSE MIS 輪詢 fallback
+            from services.stock_quote_fetcher import fetch_stock_quote
+            while True:
+                try:
+                    loop = asyncio.get_event_loop()
+                    quote = await loop.run_in_executor(None, fetch_stock_quote, sym)
+                    yield f"event: tick\ndata: {json.dumps(quote, ensure_ascii=False)}\n\n"
+                except Exception as e:
+                    logger.warning("SSE quote error [%s]: %s", sym, e)
+                    yield f"event: tick\ndata: {json.dumps({'error': str(e)})}\n\n"
+                await asyncio.sleep(5)
 
     return StreamingResponse(
         generator(),

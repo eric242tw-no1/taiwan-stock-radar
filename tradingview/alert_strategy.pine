@@ -1,0 +1,41 @@
+//@version=5
+strategy("TW Stock Radar Alert Strategy", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+
+// ── 參數 ──────────────────────────────────────────────────────────────────────
+ma_fast   = input.int(20,  "快線週期 (MA Fast)")
+ma_slow   = input.int(60,  "慢線週期 (MA Slow)")
+rsi_len   = input.int(14,  "RSI 週期")
+rsi_ob    = input.int(70,  "RSI 超買閾值")
+rsi_os    = input.int(30,  "RSI 超賣閾值")
+
+// Webhook 設定（需手動填入）
+strategy_id = input.string("MY_STRATEGY_001", "Strategy ID")
+
+// ── 指標 ──────────────────────────────────────────────────────────────────────
+ma20  = ta.sma(close, ma_fast)
+ma60  = ta.sma(close, ma_slow)
+rsi   = ta.rsi(close, rsi_len)
+
+plot(ma20, "MA20", color.new(color.blue,  0))
+plot(ma60, "MA60", color.new(color.orange, 0))
+
+// ── 進出場條件 ────────────────────────────────────────────────────────────────
+long_cond  = ta.crossover(ma20, ma60) and rsi < rsi_ob
+short_cond = ta.crossunder(ma20, ma60) and rsi > rsi_os
+
+if long_cond
+    strategy.entry("Long", strategy.long)
+
+if short_cond
+    strategy.close("Long")
+
+// ── Alert 訊息（JSON 格式與後端 TVPayload 完全相符）────────────────────────────
+// TVPayload 欄位：strategy_id, symbol, secret, target_position, timestamp
+long_msg = '{"strategy_id":"' + strategy_id + '","symbol":"{{ticker}}","secret":"{{strategy.order.price}}","target_position":1,"timestamp":{{timenow}}}'
+exit_msg  = '{"strategy_id":"' + strategy_id + '","symbol":"{{ticker}}","secret":"{{strategy.order.price}}","target_position":0,"timestamp":{{timenow}}}'
+
+// 建立 Alert 時選擇「strategy.entry()」或「strategy.close()」觸發點
+// Alert Message 貼上上方 long_msg / exit_msg 內容
+// 注意：secret 欄位在 Alert Message 中應換成實際 HMAC secret，此處以佔位符示意
+alertcondition(long_cond,  "買入信號 (MA黃金交叉 + RSI未超買)", long_msg)
+alertcondition(short_cond, "賣出信號 (MA死亡交叉 + RSI未超賣)", exit_msg)

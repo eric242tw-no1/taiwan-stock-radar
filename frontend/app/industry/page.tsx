@@ -104,10 +104,10 @@ function IndustryContent() {
       {/* 頁頭 */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
         <button onClick={() => router.back()} style={{
-          background:"#1a1a24", border:"1px solid #2a2a3a", borderRadius:7,
-          color:"#8888aa", fontSize:13, padding:"5px 12px", cursor:"pointer",
+          background:"var(--c-bg-deep)", border:"1px solid var(--c-border)", borderRadius:7,
+          color:"var(--c-text-dim)", fontSize:13, padding:"5px 12px", cursor:"pointer",
         }}>← 返回</button>
-        <h2 style={{ fontSize:20, fontWeight:700, color:"#e8e8f0", margin:0 }}>
+        <h2 style={{ fontSize:20, fontWeight:700, color:"var(--c-text)", margin:0 }}>
           {sector} 產業個股
         </h2>
       </div>
@@ -120,13 +120,13 @@ function IndustryContent() {
           { label:"本日均漲跌", value:`${avgChgNum >= 0 ? "+" : ""}${avgChg}%`, color: avgChgNum >= 0 ? "#ff4d4d" : "#00c076" },
           { label:"上漲家數",   value:`${up} 家`,   color:"#ff4d4d" },
           { label:"下跌家數",   value:`${down} 家`, color:"#00c076" },
-          { label:"追蹤股數",   value:`${stocks.length} 檔`, color:"#8888aa" },
+          { label:"追蹤股數",   value:`${stocks.length} 檔`, color:"var(--c-text-dim)" },
         ].map(item => (
           <div key={item.label} style={{
-            background:"#111118", border:"1px solid #2a2a3a", borderRadius:9,
+            background:"var(--c-bg-card)", border:"1px solid var(--c-border)", borderRadius:9,
             padding:"10px 16px", flex:"1", minWidth:120,
           }}>
-            <div style={{ fontSize:11, color:"#555570", marginBottom:4 }}>{item.label}</div>
+            <div style={{ fontSize:11, color:"var(--c-text-dim)", marginBottom:4 }}>{item.label}</div>
             <div style={{ fontSize:18, fontWeight:700, color:item.color }}>{item.value}</div>
           </div>
         ))}
@@ -134,7 +134,7 @@ function IndustryContent() {
 
       {/* 股票列表 */}
       {stocks.length === 0 ? (
-        <div style={{ textAlign:"center", color:"#555570", padding:"60px 0", fontSize:15 }}>
+        <div style={{ textAlign:"center", color:"var(--c-text-dim)", padding:"60px 0", fontSize:15 }}>
           此產業暫無資料（即將接入真實 API）
         </div>
       ) : (
@@ -142,7 +142,7 @@ function IndustryContent() {
           {/* 表頭 */}
           <div style={{
             display:"grid", gridTemplateColumns:"1fr 80px 90px 80px 80px 80px 60px",
-            padding:"6px 14px", fontSize:11, color:"#555570",
+            padding:"6px 14px", fontSize:11, color:"var(--c-text-dim)",
           }}>
             <span>股票</span>
             <span style={{ textAlign:"right" }}>現價</span>
@@ -163,22 +163,22 @@ function IndustryContent() {
                   style={{
                     display:"grid", gridTemplateColumns:"1fr 80px 90px 80px 80px 80px 60px",
                     padding:"11px 14px", cursor:"pointer",
-                    borderRadius:8, background:"#111118",
+                    borderRadius:8, background:"var(--c-bg-card)",
                     marginBottom:2,
                     border:"1px solid #1a1a2a",
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background="#1a1a2e")}
-                  onMouseLeave={e => (e.currentTarget.style.background="#111118")}
+                  onMouseEnter={e => (e.currentTarget.style.background="var(--c-bg-deep)")}
+                  onMouseLeave={e => (e.currentTarget.style.background="var(--c-bg-card)")}
                 >
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:14, fontWeight:700, color:"#e8e8f0" }}>{s.name}</span>
-                    <span style={{ fontSize:12, color:"#555570" }}>{s.code}</span>
+                    <span style={{ fontSize:14, fontWeight:700, color:"var(--c-text)" }}>{s.name}</span>
+                    <span style={{ fontSize:12, color:"var(--c-text-dim)" }}>{s.code}</span>
                   </div>
-                  <span style={{ textAlign:"right", fontSize:14, fontWeight:600, color:"#e8e8f0" }}>{s.price.toLocaleString()}</span>
+                  <span style={{ textAlign:"right", fontSize:14, fontWeight:600, color:"var(--c-text)" }}>{s.price.toLocaleString()}</span>
                   <span style={{ textAlign:"right", fontSize:14, fontWeight:600, color: up ? "#ff4d4d" : "#00c076" }}>
                     {up ? "▲" : "▼"}{Math.abs(s.change_pct).toFixed(2)}%
                   </span>
-                  <span style={{ textAlign:"right", fontSize:13, color:"#8888aa" }}>{s.volume_bn.toFixed(1)}億</span>
+                  <span style={{ textAlign:"right", fontSize:13, color:"var(--c-text-dim)" }}>{s.volume_bn.toFixed(1)}億</span>
                   <span style={{ textAlign:"center", fontSize:13, color:rsiColor(s.rsi) }}>{s.rsi.toFixed(1)}</span>
                   <span style={{ textAlign:"center", fontSize:12, color: s.ma_align ? "#00c076" : "#ff4d4d" }}>
                     {s.ma_align ? "多排" : "空排"}
@@ -192,20 +192,13 @@ function IndustryContent() {
         </div>
       )}
 
-      <div style={{
-        marginTop:20, padding:"10px 14px", borderRadius:8,
-        background:"#0d0d15", border:"1px solid #2a2a3a", fontSize:12, color:"#8888aa",
-      }}>
-        <span style={{ color:"#f5a623", fontWeight:600 }}>⚠️ 目前為 Demo 資料</span>
-        　Data Agent 上線後將顯示該產業全部掛牌股票即時報價。
-      </div>
     </div>
   );
 }
 
 export default function IndustryPage() {
   return (
-    <Suspense fallback={<div style={{ color:"#8888aa", padding:40 }}>載入中…</div>}>
+    <Suspense fallback={<div style={{ color:"var(--c-text-dim)", padding:40 }}>載入中…</div>}>
       <IndustryContent />
     </Suspense>
   );

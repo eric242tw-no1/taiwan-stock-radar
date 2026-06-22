@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sqlite3
@@ -15,6 +16,9 @@ import routers.strategies as strategies_router
 import routers.workflow as workflow_router
 import routers.journal as journal_router
 import routers.analytics as analytics_router
+import routers.audit as audit_router
+import routers.calendar as calendar_router
+import routers.notifications as notifications_router
 from services.data_fetcher import fetch_us_indices
 from services.twse_fetcher import fetch_tw_market
 from services.taifex_fetcher import fetch_futures_and_fx
@@ -28,6 +32,7 @@ from services.correlation_service import calculate_and_store as calc_correlation
 from agents.self_audit import SelfAudit
 from agents.alert_agent import run_check_alerts_sync
 from brokers.yuanta import YuantaBroker
+from brokers.sinopac import SinopacBroker
 from agents.stop_loss_guard import StopLossGuard
 
 
@@ -47,8 +52,19 @@ def _init_db() -> None:
 
 _self_audit = SelfAudit()
 
-# StopLossGuard 全域單例（simulation=true by default via env）
-_broker = YuantaBroker()
+
+def _create_broker():
+    broker_type = os.getenv("BROKER", "yuanta").lower()
+    if broker_type == "sinopac":
+        try:
+            return SinopacBroker()
+        except Exception as e:
+            logger.warning("SinopacBroker 初始化失敗，fallback 至 YuantaBroker: %s", e)
+    return YuantaBroker()
+
+
+# StopLossGuard 全域單例（broker 由 BROKER 環境變數決定）
+_broker = _create_broker()
 stop_loss_guard = StopLossGuard(_broker)
 
 
@@ -62,6 +78,33 @@ def _tw_market_and_alerts() -> None:
             run_check_alerts_sync(watchlist)
     except Exception as exc:
         logger.warning("Alert check error: %s", exc)
+
+
+def _fetch_earnings_calendar_sync() -> None:
+    """08:00 每日：取得財報/除息/除權日曆。"""
+    from services.earnings_calendar import fetch_and_store_calendar
+    try:
+        fetch_and_store_calendar()
+    except Exception as exc:
+        logger.warning("earnings_calendar fetch error: %s", exc)
+
+
+def _cleanup_notifications_sync() -> None:
+    """每週日 02:00：清理舊通知，保留最近 1000 筆。"""
+    from db import get_conn
+    try:
+        conn = get_conn()
+        total = conn.execute("SELECT COUNT(*) FROM notifications").fetchone()[0]
+        if total > 1000:
+            conn.execute(
+                "DELETE FROM notifications WHERE id NOT IN "
+                "(SELECT id FROM notifications ORDER BY id DESC LIMIT 1000)"
+            )
+            conn.commit()
+            logger.info("notifications cleanup: removed %d rows", total - 1000)
+        conn.close()
+    except Exception as exc:
+        logger.warning("notifications cleanup error: %s", exc)
 
 
 def _morning_brief_sync() -> None:
@@ -159,6 +202,15 @@ def _stop_loss_polling_sync() -> None:
     except Exception:
         asyncio.run(stop_loss_guard.polling_monitor())
 
+
+def _run_daily_audit_sync() -> None:
+    """15:30 weekdays：AI 自審計（同步包裝）。"""
+    from services.audit import run_daily_audit
+    try:
+        run_daily_audit()
+    except Exception as exc:
+        logger.warning("daily audit error: %s", exc)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -226,8 +278,25 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _stop_loss_polling_sync, "interval", minutes=1, id="stop_loss_polling",
     )
+    # AI Self Audit：每日 15:30 比對前日收盤
+    scheduler.add_job(
+        _run_daily_audit_sync, "cron",
+        hour=15, minute=30, day_of_week="mon-fri", id="ai_self_audit",
+        misfire_grace_time=300,
+    )
     # 帳戶快照：由 _factor_scan_and_batch_score 在 13:35 呼叫（Change B）
 
+    # Change I: 財報日曆 — 08:00 每日
+    scheduler.add_job(
+        _fetch_earnings_calendar_sync, "cron",
+        hour=8, minute=0, id="earnings_calendar_refresh",
+        misfire_grace_time=300,
+    )
+    # Change I: 通知清理 — 每週日 02:00
+    scheduler.add_job(
+        _cleanup_notifications_sync, "cron",
+        day_of_week="sun", hour=2, minute=0, id="notifications_cleanup",
+    )
     # Change B: Morning Brief — 08:30 週一～週五
     scheduler.add_job(
         _morning_brief_sync, "cron",
@@ -267,9 +336,32 @@ async def lifespan(app: FastAPI):
         "gov:15:15  corr:15:15  audit:16:30  tdcc:sat10:00  stoploss:1min"
     )
 
+    # Broker 連線（YUANTA_SIMULATION=false 時才真正連線）
+    broker_type = os.getenv("BROKER", "yuanta").lower()
+    simulation = os.getenv("YUANTA_SIMULATION", "true").lower() == "true"
+    if broker_type == "yuanta" and not simulation:
+        try:
+            await _broker.connect()
+        except Exception as exc:
+            logger.warning("YuantaBroker connect 失敗（非致命，繼續啟動）: %s", exc)
+
+    # Telegram Bot polling（asyncio background task）
+    from utils.telegram_bot import run_polling as _tg_run_polling
+    _tg_task = asyncio.create_task(_tg_run_polling())
+
     yield
 
+    _tg_task.cancel()
+    try:
+        await _tg_task
+    except asyncio.CancelledError:
+        pass
     scheduler.shutdown(wait=False)
+    if broker_type == "yuanta" and not simulation:
+        try:
+            await _broker.disconnect()
+        except Exception as exc:
+            logger.warning("YuantaBroker disconnect 例外: %s", exc)
 
 
 app = FastAPI(
@@ -310,6 +402,9 @@ app.include_router(strategies_router.router)
 app.include_router(workflow_router.router, prefix="/api/workflow")
 app.include_router(journal_router.router, prefix="/api/journal")
 app.include_router(analytics_router.router, prefix="/api/analytics")
+app.include_router(audit_router.router)
+app.include_router(calendar_router.router)
+app.include_router(notifications_router.router)
 
 
 @app.get("/")

@@ -1,256 +1,125 @@
-# Taiwan AI Stock Radar — Phase 2 Implementation Plan
+# 台股AI雷達 — 專案開發計劃
 
-> Branch: main | Date: 2026-06-13
-> Scope: 4 OpenSpec Changes (A/B/C/D) — AI Core, Scheduling, Frontend UX, Webhook
+## 專案架構
 
----
-
-## Context
-
-Taiwan AI Stock Radar is a Next.js 15 + FastAPI + PostgreSQL + Redis + Claude API platform for Taiwan stock analysis. Sprint 1–6 are complete (39/40 tasks done). This plan covers the next major phase: upgrading the AI decision engine, scheduling infrastructure, frontend UX, and TradingView webhook integration.
-
-**Success criteria:**
-- Win rate: 55–62%
-- Profit factor: 2:1
-- Daily automation: 100% execution rate
-- Morning Brief delivered by 08:30 daily
+- **前端**：Next.js 14 (App Router) + Recharts + React Flow + Tailwind
+- **後端**：FastAPI + APScheduler + Celery + Redis + PostgreSQL
+- **AI 層**：DeepSeek API（OpenAI 相容）/ Gemini 備援
+- **部署**：Docker Compose（本地開發）+ Nginx + Let's Encrypt + GitHub Actions
 
 ---
 
-## Change A — AI決策核心 + Factor Engine
+## 開發階段總覽
 
-### Problem
-The current AI engine (`backend/agents/ai_engine.py`) is a single-model rule-based scorer. It cannot support multi-perspective consensus, UZI-style IC memos, or strategy versioning. The 6-Agent architecture is planned but not wired.
+### ✅ Phase 0 — Backlog 基礎建設
+> `taiwan-stock-radar-backlog`（38/39，剩 1 項手動 Telegram 測試）
 
-### Scope
-
-**A1. Factor Engine** (`backend/app/factor_engine/`)
-- `technical.py`: pandas-ta unified technical factors (RSI, MACD, ATR, Bollinger, KD, OBV, CMF, VWAP, Stochastic)
-- `chips.py`: Taiwan-specific chip factors — 三大法人 (FinMind `TaiwanStockInstitutionalInvestorsBuySell`), 融資融券 (`TaiwanStockMarginPurchaseShortSale`), TDCC weekly
-- `output_formatter.py`: Unified dict format fed to all 6 Agents
-
-**A2. 6-Agent Multi-Agent Engine** (`backend/agents/multi_agent_engine.py`)
-- Factor Scanner → Technical Analyst → Chip Analyst → Risk Manager → Devil's Advocate → Final Arbiter
-- Sequential execution, each Agent reads prior outputs
-- `agent_results` DB table (symbol, date, agent_name, score, reasoning, JSON)
-
-**A3. UZI-Skill Integration**
-- 10-reviewer panel (Bull/Neutral/Bear × 3 perspectives)
-- IC三情景備忘錄: Bull case / Base case / Bear case structured output
-- 多空辯論循環: Devil's Advocate challenges Final Arbiter before commit
-
-**A4. Strategy Versioning**
-- `strategy_versions` DB table (id, name, config_json, is_active, created_at)
-- `activate_strategy_version()` stored procedure (atomically swaps active version)
-- `GET /api/strategy/versions`, `POST /api/strategy/versions`, `POST /api/strategy/versions/{id}/activate`
-
-### Dependencies
-- Existing: `backend/agents/ai_engine.py`, `backend/agents/screener_agent.py`
-- New DB tables: `factor_scan_daily`, `agent_results`, `strategy_versions`
-- New packages: `pandas-ta`, `vectorbt` (optional)
-
-### Estimated effort
-- Factor Engine: 3 days
-- Multi-Agent Engine: 4 days
-- UZI Integration: 2 days
-- Strategy Versioning: 2 days
-- **Total: ~11 days**
+- ANTHROPIC_API_KEY、Telegram Bot 接入
+- AI 快取：Redis `ai:score:{symbol}:{date}`，TTL 至隔日 09:00
+- Telegram 警報：alert_agent → 手機推播
+- TDCC 大戶集保（FinMind 週資料）
+- 台美連動：30/60/90 日 Pearson r，每日 15:15 更新
+- StopLossGuard：元大券商輪詢備援
+- 回測引擎：MA黃金交叉 / RSI 超買超賣 + equity curve
+- 選股工作流、警報設定頁、PWA
 
 ---
 
-## Change B — 排程強化 + Morning Brief + New Agents
+### ✅ Phase 1 — Change B：排程代理人
+> `change-b-scheduling-agents`（已 archive 2026-06-13）
 
-### Problem
-Current scheduling (`backend/main.py` APScheduler) runs basic market data fetches and alert checks. There's no consolidated Morning Brief, no sector rotation analysis, no Celery for heavy async tasks.
-
-### Scope
-
-**B1. Morning Brief** (daily 08:30)
-- `GET /api/reports/morning-brief`
-- Content: market sentiment, top movers, watchlist alerts, AI top picks, macro indicators
-- `daily_ai_report` DB table (date, report_json, sent_at)
-- Telegram push at 08:30 weekdays
-
-**B2. Sector Rotation Agent** (`backend/agents/sector_rotation_agent.py`)
-- Weekly sector performance ranking (11 GICS sectors)
-- Momentum score per sector using 4/8/13 week returns
-- Output: sector heat map data → `GET /api/market/sector-rotation`
-
-**B3. Market Anomaly Agent** (`backend/agents/market_anomaly_agent.py`)
-- Detect: gap up/down >3%, volume spike >3× 20-day avg, price limit hits
-- Runs every 10 minutes during market hours (09:00–13:30 TWN)
-- Triggers Telegram alert if anomaly score > threshold
-
-**B4. Celery Async Pipeline**
-- `backend/celery_app.py` + Redis broker
-- Move heavy tasks to Celery: AI scoring, screener runs, backtest jobs
-- `docker-compose.yml` add `celery-worker` service
-- Flower monitoring at port 5555
-
-**B5. APScheduler Jobs Consolidation**
-- 08:30: Morning Brief generation + Telegram
-- 09:05: Market open — chip data fetch, anomaly agent start
-- 13:35: Market close — daily factor scan, AI scoring batch
-- 15:15: Correlation service (existing)
-- 22:00: Sat — TDCC weekly fetch (existing)
-
-### Dependencies
-- Existing: `backend/main.py`, `backend/utils/telegram.py`, `backend/services/correlation_service.py`
-- New packages: `celery[redis]`, `flower`
-- New DB tables: `daily_ai_report`, `sector_performance`
-
-### Estimated effort
-- Morning Brief: 2 days
-- Sector Rotation Agent: 2 days
-- Market Anomaly Agent: 2 days
-- Celery pipeline: 3 days
-- **Total: ~9 days**
+- Celery + Redis Worker 基礎設施（docker-compose）
+- MorningBriefAgent（DeepSeek）08:30 排程
+- MarketAnomalyAgent（RSI/成交量/籌碼異常偵測）09:05 排程
+- SectorRotationAgent（產業輪動分析）
+- 任務監控頁 `/tasks`
 
 ---
 
-## Change C — Frontend UX
+### ✅ Phase 2 — Change D：Webhook + RiskManager
+> `change-d-webhook-riskmanager`（已 archive 2026-06-13）
 
-### Problem
-Key frontend pages (watchlist, industry) use hardcoded demo data. There's no visual workflow editor, no trade journal, no analytics contribution charts, and no WebSocket real-time signal feed.
-
-### Scope
-
-**C1. React Flow Workflow Editor** (`frontend/app/workflow/page.tsx`)
-- Library: `@xyflow/react`
-- Node types: DataSourceNode (blue), FactorNode (purple), AgentNode (green), FilterNode (orange), SignalNode/NotifyNode (red)
-- Backend: `WorkflowRunner` with topological sort, SSE streaming
-- API: `POST /api/workflow/run`, `POST /api/workflow/save`, `GET /api/workflow/list`
-- DB: `workflows` table (UUID, name, definition JSONB, created_at)
-
-**C2. Watchlist & Industry Real Data**
-- `frontend/app/watchlist/page.tsx`: replace demo with `GET /api/portfolio/watchlist`
-- `frontend/app/industry/page.tsx`: replace demo with `GET /api/market/sector-rotation`
-
-**C3. Analytics Page** (`frontend/app/analytics/page.tsx`)
-- Agent contribution chart (bar chart per agent, win rate contribution)
-- Strategy performance comparison (equity curves)
-- Daily P&L calendar heatmap
-
-**C4. WebSocket Real-Time Signal Feed**
-- `backend/routers/ws.py`: Redis Pub/Sub → WebSocket bridge
-- Frontend: signal ticker in navbar, live alert badge
-- `WSManager` class managing connections
-
-**C5. ATR Stop-Loss Calculator UI**
-- Panel in stock detail page
-- Input: symbol, entry price, ATR multiplier (default 2×)
-- Output: stop-loss price, position size (fixed risk %), risk/reward ratio
-
-### Dependencies
-- Existing: `frontend/app/`, `backend/routers/`
-- New packages: `@xyflow/react`, `socket.io-client`
-
-### Estimated effort
-- React Flow editor: 4 days
-- Real data wiring: 1 day
-- Analytics page: 2 days
-- WebSocket: 2 days
-- ATR calculator: 1 day
-- **Total: ~10 days**
+- TradingView Webhook（HMAC 驗證 + Redis dedup 60s）
+- RiskManager 三道風控（倉位/回撤/相關性）
+- DevilsAdvocate Agent（反向質疑進場）
+- StopLossGuard Layer2 輪詢備援
+- YuantaBroker 元大券商 API 整合
+- `/tradingview-legacy` 相容端點
 
 ---
 
-## Change D — TradingView Webhook + RiskManager + Yuanta Portfolio
+### ✅ Phase 3 — Change A：AI 決策核心 + Factor Engine
+> `change-a-ai-factor-engine`（42/44，剩 2 項手動測試）
 
-### Problem
-Current webhook (`backend/routers/webhook.py`) is action-based (buy/sell commands), which breaks on signal loss. Current RiskManager is coupled inside stop_loss_guard. Yuanta portfolio page shows demo data.
-
-### Scope
-
-**D1. State-Based TradingView Webhook**
-- Payload: `{symbol, target_position, strategy_id, price_close, timestamp}`
-- Logic: receive `target_position` → query actual position → compute diff → execute
-- Redis dedup key: `tv_signal:{strategy_id}:{symbol}:{timestamp}` with 60s TTL
-- Devil's Advocate review before execution (AI confirms signal validity)
-- `tv_signals` DB table (signal log with dedup_key, diff, executed_at)
-- `POST /api/webhook/tradingview` (replaces existing)
-
-**D2. Standalone RiskManager** (`backend/services/risk_manager.py`)
-- `RiskDecision` dataclass: action, position_size, stop_loss, take_profit, confidence
-- Methods: `check_position_size()`, `check_max_drawdown()`, `check_correlation_risk()`
-- Decoupled from `stop_loss_guard.py` — can be called from any agent or webhook
-- `GET /api/risk/assessment/{symbol}` endpoint
-
-**D3. Yuanta Portfolio Real Data** (`frontend/app/portfolio/page.tsx`)
-- Connect to `YuantaBroker` simulation API
-- Show real-time positions, P&L, margin usage
-- WebSocket updates every 30s
-- `GET /api/portfolio/positions`, `GET /api/portfolio/summary`
-
-### Dependencies
-- Existing: `backend/routers/webhook.py`, `backend/agents/stop_loss_guard.py`, `backend/services/yuanta_broker.py`
-- New DB tables: `tv_signals`, `orders`, `account_snapshots`
-
-### Estimated effort
-- State-based webhook: 3 days
-- RiskManager refactor: 2 days
-- Portfolio real data: 2 days
-- **Total: ~7 days**
+- **Factor Engine**：RSI/MACD/KD/MA/ATR/Bias + 籌碼 FactorBundle
+- **Multi-Agent Orchestrator**：6 Agent 並行+串行
+  - 技術/籌碼/總經（並行）→ 風控/執行/魔鬼代言（串行）
+- **UZI 評審團**：動能派/價值派/風控派（0.35/0.35/0.30）
+- **IC 備忘錄**：Bull/Base/Bear 三情境 + 期望值，DB 快取
+- **多空辯論**：BullAgent → BearAgent → ArbiterAgent（asyncio.gather 並行）
+- **策略版本化**：strategy_versions 表，動態 prompt
 
 ---
 
-## Overall Scope Summary
+### ✅ Phase 4 — Change C：前端 UX + 分析工具
+> `change-c-frontend-ux`（58/65，剩 7 項手動測試）
 
-| Change | Focus | Days |
-|--------|-------|------|
-| A — AI Core | Factor Engine + 6-Agent + UZI + Strategy Versions | 11 |
-| B — Scheduling | Morning Brief + Sector Agent + Celery | 9 |
-| C — Frontend | React Flow + Analytics + WebSocket + ATR | 10 |
-| D — Webhook | State-based TV + RiskManager + Yuanta | 7 |
-| **Total** | | **~37 days** |
-
-## Sequencing Recommendation
-1. Change A (AI Core) — unblocks everything AI-related
-2. Change D (Webhook + RiskManager) — risk-critical, can be parallelized with A
-3. Change B (Scheduling) — depends on Change A for Morning Brief content
-4. Change C (Frontend) — depends on B for sector rotation data, D for portfolio
-
-## Autoplan Review Decisions (2026-06-13)
-
-### Sequencing Change (AUTO)
-Execute order: **D → B → A → C** (real portfolio validation first)
-
-### Architecture Fixes (AUTO — Critical)
-- **6-Agent pipeline**: Factor/Technical/Chip run in parallel; Risk→Devil's Advocate→Arbiter sequential. Per-agent hard timeout 30s. Cache partial results so re-run resumes.
-- **Webhook HMAC auth**: Shared secret embedded in TV alert message. Reject unsigned requests before Redis/order logic.
-- **APScheduler + Celery**: APScheduler for time triggers only; Celery for task execution only. No overlap.
-
-### DB Fixes (AUTO)
-- `daily_ai_report`: unique constraint on `(report_date)` to prevent double-write
-- `agent_results`: add `strategy_version_id` column; partition by month; 90-day TTL
-- `factor_scan_daily`: partition by month
-- `strategy_versions`: use `valid_from` timestamp, not boolean flag
-- `tv_signals`: log every deduped signal with `status=deduped`
-
-### Frontend Standards (AUTO)
-- **Taiwan color convention**: RED = 漲 (gain), GREEN = 跌 (loss) — enforced in all charts/tables
-- **React Flow save**: Explicit Save button + dirty-state indicator (●)
-- **WebSocket**: Auto-reconnect 3s backoff; connection-state chip in navbar; alert badge max 99 + dismiss-all
-- **ATR defaults**: Period=14, Multiplier=2.0, adjusted OHLCV, show price + % both
-
-### API Standards (AUTO)
-- All new routers must declare `response_model=` for OpenAPI schema
-- WebSocket message schema: `{type: "signal"|"alert"|"ping", payload: {...}, ts: ISO8601}`
-- `GET /api/tasks/{task_id}` for async job polling
-
-### Cost Control (AUTO)
-- Claude API batch scan: $20/day ceiling; skip stocks already scored today (Redis cache check first)
-- Backtest baseline report required before Change A begins
-
-### Estimate Revision (AUTO)
-- Change A: 11 → 7 days (existing services leverage: indicator_service, finmind_fetcher, sector_fetcher)
-- Total: 37 → **32 days**
+- DB：trade_journal、workflow_definitions 兩張新表
+- 後端：workflow / journal / analytics / ATR stop / SSE signals
+- **工作流編輯器** `/workflow`：React Flow 節點面板
+- **交易日誌** `/journal`：CRUD + 情緒 BarChart + 分頁統計
+- **策略分析** `/analytics`：Sharpe + 多策略權益曲線比較
+- **ATR 停損計算器**：Redis TTL 300s + Modal
+- **部位計算器**：純前端，嵌入持倉頁
+- **即時訊號流**：Redis Pub/Sub → SSE → useSignalStream
+- Sidebar：新增 🔧工作流 / 📝日誌 / 📉分析
 
 ---
 
-## Not in Scope (deferred)
-- Alpha101 factor library (Phase 3)
-- VectorBT integration (Phase 3)
-- Sentiment analysis / FinBERT (Phase 3)
-- Put/Call ratio data (Phase 3)
-- Mobile native app (Tauri shell exists, not full-featured)
+### ✅ Phase 5 — Change E：AI 前端整合
+> `change-e-ai-frontend`（已 archive 2026-06-13）
+
+- `/stock` 頁面新增三個 AI Tab（UZI 評審 / IC 備忘錄 / 多空辯論）
+- UZI Tab：POST `/api/analysis/uzi/{symbol}`，三位評審評分卡
+- IC 備忘錄 Tab：GET `/api/analysis/ic-memo/{symbol}`，Bull/Base/Bear 情境卡
+- 多空辯論 Tab：POST `/api/analysis/debate/{symbol}`，辯論流程面板
+- 新增 `/strategy` 策略版本管理頁面
+- Next.js proxy timeout 調整至 120s
+- 全面切換為 DeepSeek API（移除 Anthropic 依賴）
+
+---
+
+### ✅ Phase 6 — Change F：生產部署
+> `change-f-production-deploy`（完成，VPS 驗證項目 N/A — 本地桌面架構）
+
+- Health Check 端點：`GET /api/health`（db + redis 狀態）
+- Docker Compose 生產配置：restart always + 資源限制 + healthcheck
+- Next.js standalone 模式 + 生產 Dockerfile
+- Nginx 反向代理 + Let's Encrypt SSL 自動更新
+- PostgreSQL 每日備份腳本（保留 7 天）
+- GitHub Actions CI/CD：lint → build → push GHCR → SSH deploy
+- 部署說明文件 `DEPLOY.md`
+
+---
+
+## 核心資料流
+
+```
+TradingView Webhook
+  → HMAC驗證 → Redis dedup → RiskManager → DevilsAdvocate
+  → 下單(YuantaBroker) → Redis publish → SSE → 前端badge
+
+APScheduler 08:30
+  → MorningBriefAgent(DeepSeek) → daily_ai_report
+
+POST /api/analysis/debate/{symbol}
+  → FactorBundle → BullAgent ─┐
+                               ├→ asyncio.gather → ArbiterAgent
+                 BearAgent ────┘
+
+GET /api/analysis/ic-memo/{symbol}
+  → DB cache → DeepSeek → ic_memo table
+
+GET /api/risk/atr-stop/{symbol}
+  → daily_price → ATR計算 → Redis TTL 300s → 前端Modal
+```

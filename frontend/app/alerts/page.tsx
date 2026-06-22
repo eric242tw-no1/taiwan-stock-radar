@@ -77,9 +77,9 @@ function Card({ title, children, extra }: {
   title: string; children: React.ReactNode; extra?: React.ReactNode;
 }) {
   return (
-    <div style={{ background: "#111118", border: "1px solid #2a2a3a", borderRadius: 8, padding: 14, marginBottom: 12 }}>
+    <div style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 14, marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontSize: 13, color: "#8888aa", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase" }}>
+        <div style={{ fontSize: 13, color: "var(--c-text-dim)", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase" }}>
           {title}
         </div>
         {extra}
@@ -96,7 +96,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
       onClick={onChange}
       style={{
         width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
-        background: on ? "#00c07666" : "#2a2a3a", padding: 2,
+        background: on ? "#00c07666" : "var(--c-border)", padding: 2,
         display: "flex", alignItems: "center",
         justifyContent: on ? "flex-end" : "flex-start",
         transition: "background 0.2s",
@@ -105,7 +105,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
     >
       <span style={{
         width: 18, height: 18, borderRadius: "50%",
-        background: on ? "#00c076" : "#555570",
+        background: on ? "#00c076" : "var(--c-text-dim)",
         display: "block", transition: "background 0.2s",
       }} />
     </button>
@@ -122,15 +122,15 @@ function AlertCard({
   onDelete: () => void;
 }) {
   const liveVal = live ? live[alert.metric] : undefined;
-  const statusColor = alert.triggered ? "#f5a623" : alert.enabled ? "#00c076" : "#555570";
+  const statusColor = alert.triggered ? "#f5a623" : alert.enabled ? "#00c076" : "var(--c-text-dim)";
   const statusText  = alert.triggered ? "已觸發" : alert.enabled ? "監控中" : "已停用";
-  const borderColor = alert.triggered ? "#f5a62344" : "1px solid #2a2a3a";
+  const borderColor = alert.triggered ? "#f5a62344" : "1px solid var(--c-border)";
 
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 10,
-      background: "#0d0d15", borderRadius: 8, padding: "10px 12px",
-      border: `1px solid ${alert.triggered ? "#f5a62355" : "#2a2a3a"}`,
+      background: "var(--c-bg-main)", borderRadius: 8, padding: "10px 12px",
+      border: `1px solid ${alert.triggered ? "#f5a62355" : "var(--c-border)"}`,
       opacity: alert.enabled ? 1 : 0.6,
     }}>
       {/* 左：代號 + 條件 */}
@@ -145,11 +145,11 @@ function AlertCard({
             {statusText}
           </span>
         </div>
-        <div style={{ fontSize: 13, color: "#8888aa" }}>
+        <div style={{ fontSize: 13, color: "var(--c-text-dim)" }}>
           {METRIC_LABEL[alert.metric]}{" "}
-          <span style={{ color: "#c8c8d8" }}>{OP_LABEL[alert.op]} {alert.threshold}</span>
+          <span style={{ color: "var(--c-text-mid)" }}>{OP_LABEL[alert.op]} {alert.threshold}</span>
           {liveVal !== undefined && (
-            <span style={{ color: "#555570", marginLeft: 6 }}>（目前 {liveVal}）</span>
+            <span style={{ color: "var(--c-text-dim)", marginLeft: 6 }}>（目前 {liveVal}）</span>
           )}
         </div>
       </div>
@@ -159,8 +159,8 @@ function AlertCard({
       <button
         onClick={onDelete}
         style={{
-          background: "transparent", border: "1px solid #2a2a3a",
-          borderRadius: 6, color: "#555570", cursor: "pointer",
+          background: "transparent", border: "1px solid var(--c-border)",
+          borderRadius: 6, color: "var(--c-text-dim)", cursor: "pointer",
           fontSize: 12, padding: "3px 8px",
         }}
       >
@@ -371,8 +371,8 @@ export default function AlertsPage() {
 
   // ── input / select 共用樣式 ───────────────────────────────────
   const inputStyle: React.CSSProperties = {
-    background: "#0d0d15", border: "1px solid #2a2a3a", borderRadius: 6,
-    color: "#e8e8f0", padding: "6px 10px", fontSize: 13, width: "100%",
+    background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 6,
+    color: "var(--c-text)", padding: "6px 10px", fontSize: 13, width: "100%",
   };
 
   return (
@@ -382,8 +382,8 @@ export default function AlertsPage() {
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: "#3d7eff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Alerts</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <h1 style={{ margin: 0, fontSize: 24, color: "#e8e8f0", fontWeight: 700 }}>警報設定</h1>
-          <div style={{ fontSize: 11, color: "#555570", background: "#111118", border: "1px solid #2a2a3a", borderRadius: 6, padding: "4px 10px" }}>
+          <h1 style={{ margin: 0, fontSize: 24, color: "var(--c-text)", fontWeight: 700 }}>警報設定</h1>
+          <div style={{ fontSize: 11, color: "var(--c-text-dim)", background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 6, padding: "4px 10px" }}>
             <span style={{ color: "#00c076", marginRight: 4 }}>●</span>本地規則引擎 · 30 秒掃描
           </div>
         </div>
@@ -394,12 +394,12 @@ export default function AlertsPage() {
         <form onSubmit={handleAdd}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "110px 1fr 1fr 100px", gap: 8, marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>股票代號</div>
+              <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>股票代號</div>
               <input style={inputStyle} placeholder="2330" maxLength={6}
                 value={symbol} onChange={(e) => setSymbol(e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>警報條件</div>
+              <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>警報條件</div>
               <select style={inputStyle} value={metric} onChange={(e) => setMetric(e.target.value as Metric)}>
                 {(Object.entries(METRIC_LABEL) as [Metric, string][]).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -407,7 +407,7 @@ export default function AlertsPage() {
               </select>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>比較</div>
+              <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>比較</div>
               <select style={inputStyle} value={op} onChange={(e) => setOp(e.target.value as Op)}>
                 <option value="gte">≥ 大於等於</option>
                 <option value="lte">≤ 小於等於</option>
@@ -416,7 +416,7 @@ export default function AlertsPage() {
               </select>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>閾值</div>
+              <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>閾值</div>
               <input style={inputStyle} type="number" step="any" placeholder="70"
                 value={threshold} onChange={(e) => setThreshold(e.target.value)} />
             </div>
@@ -440,15 +440,15 @@ export default function AlertsPage() {
         title={`警報清單（${alerts.length}）${triggeredCount > 0 ? ` · ${triggeredCount} 筆已觸發` : ""}`}
         extra={
           <button onClick={clearTriggered} style={{
-            background: "transparent", border: "1px solid #2a2a3a", borderRadius: 6,
-            color: "#555570", cursor: "pointer", fontSize: 12, padding: "3px 8px",
+            background: "transparent", border: "1px solid var(--c-border)", borderRadius: 6,
+            color: "var(--c-text-dim)", cursor: "pointer", fontSize: 12, padding: "3px 8px",
           }}>
             清除觸發狀態
           </button>
         }
       >
         {alerts.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#555570", textAlign: "center", padding: "20px 0" }}>
+          <div style={{ fontSize: 13, color: "var(--c-text-dim)", textAlign: "center", padding: "20px 0" }}>
             尚未設定任何警報，請使用上方表單新增。
           </div>
         ) : (
@@ -471,15 +471,15 @@ export default function AlertsPage() {
         title="近期觸發紀錄"
         extra={
           <button onClick={clearHistory} style={{
-            background: "transparent", border: "1px solid #2a2a3a", borderRadius: 6,
-            color: "#555570", cursor: "pointer", fontSize: 12, padding: "3px 8px",
+            background: "transparent", border: "1px solid var(--c-border)", borderRadius: 6,
+            color: "var(--c-text-dim)", cursor: "pointer", fontSize: 12, padding: "3px 8px",
           }}>
             清除紀錄
           </button>
         }
       >
         {history.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#555570", textAlign: "center", padding: "20px 0" }}>
+          <div style={{ fontSize: 13, color: "var(--c-text-dim)", textAlign: "center", padding: "20px 0" }}>
             尚無觸發紀錄。
           </div>
         ) : (
@@ -487,22 +487,22 @@ export default function AlertsPage() {
             {history.map((h, i) => (
               <div key={i} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                background: "#0d0d15", border: "1px solid #f5a62333", borderRadius: 8, padding: "9px 12px",
+                background: "var(--c-bg-main)", border: "1px solid #f5a62333", borderRadius: 8, padding: "9px 12px",
               }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "#3d7eff" }}>{h.symbol}</span>
-                    <span style={{ fontSize: 12, color: "#8888aa" }}>{h.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--c-text-dim)" }}>{h.name}</span>
                     <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 3,
                       background: "#f5a62322", border: "1px solid #f5a62355", color: "#f5a623" }}>
                       已觸發
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#555570" }}>
+                  <div style={{ fontSize: 12, color: "var(--c-text-dim)" }}>
                     {METRIC_LABEL[h.metric]} {OP_LABEL[h.op]} {h.threshold}
                   </div>
                 </div>
-                <span style={{ fontSize: 12, color: "#555570", flexShrink: 0 }}>{h.triggeredAt}</span>
+                <span style={{ fontSize: 12, color: "var(--c-text-dim)", flexShrink: 0 }}>{h.triggeredAt}</span>
               </div>
             ))}
           </div>

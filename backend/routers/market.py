@@ -13,6 +13,7 @@ from services.sector_fetcher import get_cached_sectors, fetch_sectors
 from services.gov_fund_fetcher import get_cached_gov_funds, fetch_gov_funds
 from services.fear_greed_fetcher import get_cached_fear_greed
 from services.buffett_fetcher import get_cached_buffett, fetch_buffett
+from services.cache import cache
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -94,10 +95,41 @@ async def trigger_indicator_refresh():
 async def get_indicator(ticker: str):
     """
     單一股票技術指標。ticker 格式：2330.TW
+    回應包含 patterns 欄位（K 線形態識別，最近 5 根）
     """
-    data = get_indicators(ticker.upper())
+    t = ticker.upper()
+    cached = cache.get(f"indicators:{t}")
+    if cached:
+        return cached
+
+    data = get_indicators(t)
     if data is None:
         raise HTTPException(status_code=404, detail=f"No indicator data for {ticker}")
+
+    # K 線形態識別（最近 5 根）
+    try:
+        import yfinance as yf
+        from services.candlestick import detect_from_ohlcv
+        df = yf.download(t, period="14d", interval="1d", progress=False, auto_adjust=True)
+        if not df.empty:
+            rows = df.tail(5).reset_index().to_dict("records")
+            data["patterns"] = detect_from_ohlcv(rows)
+        else:
+            data["patterns"] = []
+    except Exception:
+        data["patterns"] = []
+
+    # 主力意圖四階段分析
+    try:
+        from services.market_maker import detect_phase
+        from services.finmind_fetcher import fetch_stock_chip
+        symbol_raw = t.replace(".TW", "")
+        chip_data = fetch_stock_chip(symbol_raw).get("latest", {})
+        data["market_maker_intent"] = detect_phase(chip_data, data)
+    except Exception:
+        data["market_maker_intent"] = {"phase": "觀望", "confidence": 0.0, "signals": []}
+
+    cache.set(f"indicators:{t}", data)
     return data
 
 

@@ -148,7 +148,7 @@ function EquityChart({ equity, capital }: { equity: { date: string; value: numbe
       ))}
       {/* capital baseline */}
       {baseY >= PAD && baseY <= H - PAD && (
-        <line x1={PAD} x2={W - PAD} y1={baseY} y2={baseY} stroke="#555570" strokeWidth="1" strokeDasharray="4 3" />
+        <line x1={PAD} x2={W - PAD} y1={baseY} y2={baseY} stroke="var(--c-text-dim)" strokeWidth="1" strokeDasharray="4 3" />
       )}
       {/* area fill */}
       <path
@@ -164,9 +164,9 @@ function EquityChart({ equity, capital }: { equity: { date: string; value: numbe
 // ── 統計格子 ──────────────────────────────────────────────────────
 function StatBox({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{ background: "#0d0d15", border: "1px solid #2a2a3a", borderRadius: 8, padding: "10px 14px" }}>
-      <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: color ?? "#e8e8f0" }}>{value}</div>
+    <div style={{ background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "10px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: color ?? "var(--c-text)" }}>{value}</div>
     </div>
   );
 }
@@ -228,12 +228,12 @@ export default function BacktestPage() {
   // ── 顏色工具 ──────────────────────────────────────────────────
   const retColor = result
     ? result.total_return >= 0 ? "#ff4d4d" : "#00c076"
-    : "#e8e8f0";
+    : "var(--c-text)";
 
   // ── input 共用樣式 ────────────────────────────────────────────
   const inp: React.CSSProperties = {
-    background: "#0d0d15", border: "1px solid #2a2a3a", borderRadius: 6,
-    color: "#e8e8f0", padding: "6px 10px", fontSize: 13,
+    background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 6,
+    color: "var(--c-text)", padding: "6px 10px", fontSize: 13,
   };
 
   return (
@@ -243,28 +243,28 @@ export default function BacktestPage() {
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: "#3d7eff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Backtest</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <h1 style={{ margin: 0, fontSize: 24, color: "#e8e8f0", fontWeight: 700 }}>策略回測</h1>
-          <div style={{ fontSize: 11, color: "#555570", background: "#111118", border: "1px solid #2a2a3a", borderRadius: 6, padding: "4px 10px" }}>
+          <h1 style={{ margin: 0, fontSize: 24, color: "var(--c-text)", fontWeight: 700 }}>策略回測</h1>
+          <div style={{ fontSize: 11, color: "var(--c-text-dim)", background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 6, padding: "4px 10px" }}>
             資料來源：yfinance · 純前端計算
           </div>
         </div>
       </div>
 
       {/* 設定面板 */}
-      <div style={{ background: "#111118", border: "1px solid #2a2a3a", borderRadius: 8, padding: 14, marginBottom: 12 }}>
-        <div style={{ fontSize: 13, color: "#8888aa", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 12 }}>
+      <div style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 14, marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: "var(--c-text-dim)", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 12 }}>
           回測參數
         </div>
 
         {/* 第一排：基本設定 */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "120px 130px 1fr 160px", gap: 10, marginBottom: 10, alignItems: "end" }}>
           <div>
-            <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>股票代號</div>
+            <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>股票代號</div>
             <input style={{ ...inp, width: "100%" }} placeholder="2330" value={symbol}
               onChange={(e) => setSymbol(e.target.value)} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>資料區間</div>
+            <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>資料區間</div>
             <select style={{ ...inp, width: "100%" }} value={period} onChange={(e) => setPeriod(e.target.value)}>
               <option value="90d">近 3 個月</option>
               <option value="180d">近 6 個月</option>
@@ -273,14 +273,14 @@ export default function BacktestPage() {
             </select>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>策略</div>
+            <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>策略</div>
             <div style={{ display: "flex", gap: 6 }}>
               {(["ma_cross", "rsi"] as const).map((s) => (
                 <button key={s} onClick={() => setStrategy(s)} style={{
                   flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer", fontSize: 13,
-                  border: `1px solid ${strategy === s ? "#00c07655" : "#2a2a3a"}`,
-                  background: strategy === s ? "#003d20" : "#0d0d15",
-                  color: strategy === s ? "#00c076" : "#8888aa", fontWeight: strategy === s ? 600 : 400,
+                  border: `1px solid ${strategy === s ? "#00c07655" : "var(--c-border)"}`,
+                  background: strategy === s ? "#003d20" : "var(--c-bg-main)",
+                  color: strategy === s ? "#00c076" : "var(--c-text-dim)", fontWeight: strategy === s ? 600 : 400,
                 }}>
                   {s === "ma_cross" ? "MA 均線交叉" : "RSI 超買超賣"}
                 </button>
@@ -288,7 +288,7 @@ export default function BacktestPage() {
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>初始資金（元）</div>
+            <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>初始資金（元）</div>
             <input style={{ ...inp, width: "100%" }} type="number" value={capital}
               onChange={(e) => setCapital(Number(e.target.value))} />
           </div>
@@ -299,37 +299,37 @@ export default function BacktestPage() {
           {strategy === "ma_cross" ? (
             <>
               <div>
-                <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>短均線天數</div>
+                <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>短均線天數</div>
                 <input style={{ ...inp, width: 90 }} type="number" min={2} max={50} value={shortP}
                   onChange={(e) => setShortP(Number(e.target.value))} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>長均線天數</div>
+                <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>長均線天數</div>
                 <input style={{ ...inp, width: 90 }} type="number" min={5} max={200} value={longP}
                   onChange={(e) => setLongP(Number(e.target.value))} />
               </div>
-              <div style={{ fontSize: 12, color: "#555570", alignSelf: "flex-end", paddingBottom: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--c-text-dim)", alignSelf: "flex-end", paddingBottom: 8 }}>
                 短均穿越長均 → 買入；長均穿越短均 → 賣出
               </div>
             </>
           ) : (
             <>
               <div>
-                <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>RSI 週期</div>
+                <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>RSI 週期</div>
                 <input style={{ ...inp, width: 90 }} type="number" min={5} max={30} value={rsiPeriod}
                   onChange={(e) => setRsiPeriod(Number(e.target.value))} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>超賣線（買入）</div>
+                <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>超賣線（買入）</div>
                 <input style={{ ...inp, width: 90 }} type="number" min={10} max={45} value={oversold}
                   onChange={(e) => setOversold(Number(e.target.value))} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#555570", marginBottom: 4 }}>超買線（賣出）</div>
+                <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginBottom: 4 }}>超買線（賣出）</div>
                 <input style={{ ...inp, width: 90 }} type="number" min={55} max={90} value={overbought}
                   onChange={(e) => setOverbought(Number(e.target.value))} />
               </div>
-              <div style={{ fontSize: 12, color: "#555570", alignSelf: "flex-end", paddingBottom: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--c-text-dim)", alignSelf: "flex-end", paddingBottom: 8 }}>
                 RSI 從超賣回升 → 買入；從超買回落 → 賣出
               </div>
             </>
@@ -339,8 +339,8 @@ export default function BacktestPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={fetchAndRun} disabled={loading} style={{
             background: loading ? "#1a2a3a" : "#003d20",
-            border: `1px solid ${loading ? "#2a2a3a" : "#00c07655"}`,
-            borderRadius: 6, color: loading ? "#555570" : "#00c076",
+            border: `1px solid ${loading ? "var(--c-border)" : "#00c07655"}`,
+            borderRadius: 6, color: loading ? "var(--c-text-dim)" : "#00c076",
             fontSize: 13, padding: "8px 24px", cursor: loading ? "not-allowed" : "pointer", fontWeight: 600,
           }}>
             {loading ? "下載資料中…" : "▶ 開始回測"}
@@ -363,12 +363,12 @@ export default function BacktestPage() {
           </div>
 
           {/* 淨值曲線 */}
-          <div style={{ background: "#111118", border: "1px solid #2a2a3a", borderRadius: 8, padding: 14, marginBottom: 12 }}>
+          <div style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 14, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div style={{ fontSize: 13, color: "#8888aa", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase" }}>
+              <div style={{ fontSize: 13, color: "var(--c-text-dim)", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase" }}>
                 淨值曲線
               </div>
-              <div style={{ fontSize: 12, color: "#555570" }}>
+              <div style={{ fontSize: 12, color: "var(--c-text-dim)" }}>
                 期末資產：<span style={{ color: retColor, fontWeight: 700 }}>
                   NT${(result.equity[result.equity.length - 1]?.value ?? capital).toLocaleString("en-US", { maximumFractionDigits: 0 })}
                 </span>
@@ -376,25 +376,25 @@ export default function BacktestPage() {
               </div>
             </div>
             <EquityChart equity={result.equity} capital={capital} />
-            <div style={{ fontSize: 11, color: "#555570", marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginTop: 6 }}>
               虛線 = 初始資金基準　紅色 = 高於初始　綠色 = 低於初始（台股慣例）
             </div>
           </div>
 
           {/* 交易紀錄 */}
-          <div style={{ background: "#111118", border: "1px solid #2a2a3a", borderRadius: 8, padding: 14 }}>
-            <div style={{ fontSize: 13, color: "#8888aa", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>
+          <div style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 14 }}>
+            <div style={{ fontSize: 13, color: "var(--c-text-dim)", fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>
               交易紀錄（{result.trades.length} 筆）
             </div>
             {result.trades.length === 0 ? (
-              <div style={{ fontSize: 13, color: "#555570", textAlign: "center", padding: "20px 0" }}>
+              <div style={{ fontSize: 13, color: "var(--c-text-dim)", textAlign: "center", padding: "20px 0" }}>
                 此區間內無交易訊號，試著調整策略參數或拉長區間。
               </div>
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr style={{ color: "#555570", borderBottom: "1px solid #2a2a3a" }}>
+                    <tr style={{ color: "var(--c-text-dim)", borderBottom: "1px solid var(--c-border)" }}>
                       {["#", "買入日期", "買入價", "賣出日期", "賣出價", "報酬率", "損益（元）"].map((h) => (
                         <th key={h} style={{ padding: "4px 10px", textAlign: h === "#" ? "center" : "right", fontWeight: 500 }}>{h}</th>
                       ))}
@@ -406,13 +406,13 @@ export default function BacktestPage() {
                       const color = up ? "#ff4d4d" : "#00c076";
                       return (
                         <tr key={i} style={{ borderBottom: "1px solid #1a1a2a" }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#0d0d15")}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c-bg-main)")}
                           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                          <td style={{ padding: "6px 10px", textAlign: "center", color: "#555570" }}>{i + 1}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", color: "#8888aa" }}>{t.entry_date}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", color: "#c8c8d8" }}>{t.entry_price.toLocaleString()}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", color: "#8888aa" }}>{t.exit_date}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", color: "#c8c8d8" }}>{t.exit_price.toLocaleString()}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "center", color: "var(--c-text-dim)" }}>{i + 1}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "right", color: "var(--c-text-dim)" }}>{t.entry_date}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "right", color: "var(--c-text-mid)" }}>{t.entry_price.toLocaleString()}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "right", color: "var(--c-text-dim)" }}>{t.exit_date}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "right", color: "var(--c-text-mid)" }}>{t.exit_price.toLocaleString()}</td>
                           <td style={{ padding: "6px 10px", textAlign: "right", color, fontWeight: 700 }}>
                             {up ? "+" : ""}{t.pnl_pct.toFixed(2)}%
                           </td>

@@ -49,6 +49,14 @@
   --c-sidebar-active: #e0eaf8;
   --c-sidebar-text:   #1a2030;
   --c-sidebar-muted:  #8090a8;
+
+  /* legacy variable aliases */
+  --bg-base:      #f0f4f8;
+  --bg-card:      #ffffff;
+  --bg-card-hover:#f0f5ff;
+  --border:       #c5d4e8;
+  --text-primary: #1a2030;
+  --text-secondary:#6080a0;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

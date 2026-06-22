@@ -8,15 +8,77 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 _BASE = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
 
-async def send_message(text: str, chat_id: Optional[str] = None, parse_mode: str = "HTML") -> bool:
-    """傳送訊息到 Telegram；回傳是否成功。"""
+def _write_notification(message: str, source: str) -> None:
+    try:
+        from db import get_conn
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO notifications (message, source) VALUES (?, ?)",
+            (message[:2000], source),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # 不影響主流程
+
+
+async def send_message(text: str, chat_id: Optional[str] = None, parse_mode: str = "HTML", source: str = "system") -> bool:
+    """傳送訊息到 Telegram；回傳是否成功。同步寫入 notifications 表。"""
+    cid = chat_id or TELEGRAM_CHAT_ID
+    success = False
+    if TELEGRAM_BOT_TOKEN and cid:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"{_BASE}/sendMessage",
+                json={"chat_id": cid, "text": text, "parse_mode": parse_mode},
+            )
+        success = r.status_code == 200
+    _write_notification(text, source if success else "failed")
+    return success
+
+
+async def send_order_confirm(
+    signal_id: int,
+    symbol: str,
+    qty: int,
+    price: float,
+    stop_price: float,
+    chat_id: Optional[str] = None,
+) -> bool:
+    """送出含 Inline Keyboard 的下單確認訊息。
+    Callback data 格式：confirm:<signal_id> / cancel:<signal_id> / analysis:<signal_id>
+    """
     cid = chat_id or TELEGRAM_CHAT_ID
     if not TELEGRAM_BOT_TOKEN or not cid:
         return False
+
+    text = (
+        f"📋 <b>下單確認請求</b>\n"
+        f"━━━━━━━━━━━━\n"
+        f"📌 股票：<b>{symbol}</b>\n"
+        f"📦 數量：<b>{qty} 張</b>\n"
+        f"💰 市價：<b>{price:.2f}</b>\n"
+        f"🛑 停損：<b>{stop_price:.2f}</b>\n"
+        f"⏱️ 60 秒內未回應將自動取消\n"
+        f"Signal ID：{signal_id}"
+    )
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ 確認下單", "callback_data": f"confirm:{signal_id}"},
+            {"text": "❌ 取消",     "callback_data": f"cancel:{signal_id}"},
+        ], [
+            {"text": "📊 查看 AI 分析", "callback_data": f"analysis:{signal_id}"},
+        ]]
+    }
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.post(
             f"{_BASE}/sendMessage",
-            json={"chat_id": cid, "text": text, "parse_mode": parse_mode},
+            json={
+                "chat_id": cid,
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": keyboard,
+            },
         )
     return r.status_code == 200
 

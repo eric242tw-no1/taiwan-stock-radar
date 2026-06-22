@@ -24,17 +24,15 @@ class StopLossGuard:
         # symbol → {stop_price, quantity, entry_price}
         self._polling_symbols: dict[str, dict] = {}
 
-    async def setup(
+    async def layer1_place_stop_order(
         self,
         symbol: str,
-        quantity: int,
         stop_price: float,
-        entry_price: float,
+        quantity: int,
     ) -> bool:
-        """下單後立即呼叫，設置雙層保護。回傳 Layer 1 是否成功。"""
+        """Layer 1：透過 broker 送出停損委託。回傳是否成功。"""
         from utils.telegram import send_message
 
-        layer1_ok = False
         try:
             stop_order = await self.broker.place_order(
                 symbol=symbol,
@@ -44,8 +42,8 @@ class StopLossGuard:
                 stop_price=stop_price,
             )
             await _save_stop_order(symbol, stop_order["order_id"], stop_price)
-            layer1_ok = True
             logger.info("StopLossGuard Layer1 OK: %s stop@%.2f", symbol, stop_price)
+            return True
         except Exception as e:
             logger.warning("StopLossGuard Layer1 FAIL [%s]: %s", symbol, e)
             await send_message(
@@ -53,19 +51,12 @@ class StopLossGuard:
                 f"股票：{symbol}  停損價：{stop_price}\n"
                 f"原因：{e}"
             )
+            return False
 
-        # Layer 2 無論 Layer 1 成功與否都同時啟用（雙重保險）
-        self._polling_symbols[symbol] = {
-            "stop_price": stop_price,
-            "quantity": quantity,
-            "entry_price": entry_price,
-        }
-        return layer1_ok
-
-    async def polling_monitor(self):
+    async def layer2_polling_monitor(self):
         """
         Layer 2：每分鐘輪詢，由 APScheduler 每分鐘呼叫。
-        盤中時間 09:00–13:30 才執行。
+        盤中時間 09:00–13:30 才執行。停損觸發後推播 Telegram 通知。
         """
         from utils.telegram import send_message
 
@@ -80,7 +71,6 @@ class StopLossGuard:
                     continue
 
                 if current_price <= info["stop_price"]:
-                    # Drawdown check — stop-loss always fires, but log if already in bad shape
                     dd = _rm.check_max_drawdown()
                     if not dd.approved:
                         logger.warning(
@@ -111,6 +101,28 @@ class StopLossGuard:
                     )
             except Exception as e:
                 logger.error("StopLossGuard polling error [%s]: %s", symbol, e)
+
+    async def setup(
+        self,
+        symbol: str,
+        quantity: int,
+        stop_price: float,
+        entry_price: float,
+    ) -> bool:
+        """下單後立即呼叫，啟動雙層保護。回傳 Layer 1 是否成功。"""
+        layer1_ok = await self.layer1_place_stop_order(symbol, stop_price, quantity)
+
+        # Layer 2 無論 Layer 1 成功與否都同時啟用（雙重保險）
+        self._polling_symbols[symbol] = {
+            "stop_price": stop_price,
+            "quantity": quantity,
+            "entry_price": entry_price,
+        }
+        return layer1_ok
+
+    # 向後相容別名
+    async def polling_monitor(self):
+        await self.layer2_polling_monitor()
 
     def remove(self, symbol: str):
         """手動移除監控（例如平倉後呼叫）"""

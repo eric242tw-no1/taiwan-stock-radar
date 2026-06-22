@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS tv_signals (
     dedup_key       TEXT UNIQUE,
     status          TEXT NOT NULL DEFAULT 'pending',
     ai_confidence   REAL,
+    reentry_action  TEXT,
     executed_at     TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -312,6 +313,42 @@ CREATE TABLE IF NOT EXISTS macro_indicators (
     tw_us_corr_60d REAL,
     tw_us_corr_90d REAL,
     updated_at     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS earnings_calendar (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol      TEXT,
+    name        TEXT,
+    event_type  TEXT NOT NULL,  -- dividend / rights / investor_conference / earnings
+    event_date  TEXT NOT NULL,
+    description TEXT,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    message    TEXT NOT NULL,
+    source     TEXT NOT NULL DEFAULT 'system',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    is_read    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ai_audit (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol             TEXT NOT NULL,
+    predicted_direction TEXT NOT NULL,  -- up / down / neutral
+    target_price       REAL,
+    confidence         REAL,
+    predicted_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    actual_close       REAL,
+    is_correct         INTEGER,         -- 1=correct 0=wrong NULL=pending
+    audited_at         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS cache (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    expires_at TEXT NOT NULL
 );
 
 -- Default system config

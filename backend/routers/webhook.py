@@ -12,6 +12,7 @@ New payload (POST /api/webhook/tradingview):
 
 Flow: HMAC → dedup → diff → RiskManager.check_max_drawdown → Devil's Advocate → order → DB
 """
+import asyncio
 import hashlib
 import hmac
 import json
@@ -49,18 +50,19 @@ def _insert_tv_signal(
     dedup_key: str,
     status: str,
     ai_confidence: float | None = None,
+    reentry_action: str | None = None,
 ) -> int:
     sql = """
     INSERT INTO tv_signals
         (strategy_id, symbol, target_position, actual_position, diff,
-         dedup_key, status, ai_confidence)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         dedup_key, status, ai_confidence, reentry_action)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(sql, (
         strategy_id, symbol, target_position, actual_position, diff,
-        dedup_key, status, ai_confidence,
+        dedup_key, status, ai_confidence, reentry_action,
     ))
     signal_id = cur.lastrowid
     conn.commit()
@@ -226,16 +228,86 @@ async def tradingview_webhook(request: Request):
         return {"status": "rejected", "reason": da["reason"], "symbol": symbol,
                 "ai_confidence": ai_confidence}
 
-    # ── 6. 寫入 tv_signals（pending） ─────────────────────────
+    # ── 6. ReEntry 評估（買入信號才需要）────────────────────────
+    reentry_action: str | None = None
+    if action == "buy":
+        from services.reentry_evaluator import evaluate as re_evaluate
+        positions = []
+        try:
+            positions = await _broker.get_positions()
+        except Exception:
+            pass
+        reentry_action = re_evaluate(symbol, ai_confidence, positions)
+
+        if reentry_action == "ignore":
+            signal_id = _insert_tv_signal(
+                strategy_id=payload.strategy_id, symbol=symbol,
+                target_position=payload.target_position,
+                actual_position=actual_position, diff=diff,
+                dedup_key=dedup_key, status="ignored",
+                ai_confidence=ai_confidence, reentry_action=reentry_action,
+            )
+            logger.info("ReEntry ignore: %s confidence=%.2f", symbol, ai_confidence)
+            return {"status": "ignored", "reason": "reentry_low_confidence", "symbol": symbol}
+
+        if reentry_action == "warn":
+            signal_id = _insert_tv_signal(
+                strategy_id=payload.strategy_id, symbol=symbol,
+                target_position=payload.target_position,
+                actual_position=actual_position, diff=diff,
+                dedup_key=dedup_key, status="warned",
+                ai_confidence=ai_confidence, reentry_action=reentry_action,
+            )
+            await send_message(
+                f"⚠️ <b>[ReEntry 警告]</b> {symbol}\n"
+                f"已有持倉，AI 信心 {ai_confidence:.0%} 未達加碼門檻（75%）\n"
+                f"建議觀察，未自動下單。"
+            )
+            return {"status": "warned", "reason": "reentry_warn", "symbol": symbol}
+
+        # reentry_action == "add"：有持倉加碼時減半下單
+        has_position = any(p.get("symbol") == symbol for p in positions)
+        if has_position:
+            quantity = max(1, quantity // 2)
+
+    # ── 7. 寫入 tv_signals（pending）────────────────────────────
     signal_id = _insert_tv_signal(
         strategy_id=payload.strategy_id, symbol=symbol,
         target_position=payload.target_position,
         actual_position=actual_position, diff=diff,
         dedup_key=dedup_key, status="pending",
-        ai_confidence=ai_confidence,
+        ai_confidence=ai_confidence, reentry_action=reentry_action,
     )
 
-    # ── 7. 下單 ───────────────────────────────────────────────
+    # ── 8. Telegram 確認（等待 callback，最多 60 秒）────────────
+    from utils.telegram import send_order_confirm
+    from utils.telegram_bot import register_pending, is_confirmed
+
+    try:
+        quote = await _broker.get_quote(symbol)
+        entry_price = float(quote.get("price", 0))
+    except Exception:
+        entry_price = 0.0
+    stop_price = round(entry_price * 0.95, 2)
+
+    confirm_event = register_pending(signal_id)
+    await send_order_confirm(
+        signal_id=signal_id, symbol=symbol,
+        qty=quantity, price=entry_price, stop_price=stop_price,
+    )
+
+    try:
+        await asyncio.wait_for(confirm_event.wait(), timeout=60)
+    except asyncio.TimeoutError:
+        _update_tv_signal(signal_id, "timeout", ai_confidence)
+        await send_message(f"⏱️ 下單逾時取消：{symbol}（60 秒內未回應）")
+        return {"status": "timeout", "symbol": symbol, "signal_id": signal_id}
+
+    if not is_confirmed(signal_id):
+        _update_tv_signal(signal_id, "cancelled", ai_confidence)
+        return {"status": "cancelled", "symbol": symbol, "signal_id": signal_id}
+
+    # ── 9. 下單 ───────────────────────────────────────────────
     broker_order_id = None
     try:
         result = await _broker.place_order(
@@ -246,6 +318,17 @@ async def tradingview_webhook(request: Request):
         _update_tv_signal(signal_id, "executed", ai_confidence)
         _insert_order(signal_id, symbol, action, quantity, None, "submitted", broker_order_id)
         order_status = "submitted"
+
+        # 買入成功 → 立即啟動 StopLossGuard 雙層保護
+        if action == "buy":
+            from main import stop_loss_guard
+            try:
+                await stop_loss_guard.setup(
+                    symbol=symbol, quantity=quantity,
+                    stop_price=stop_price, entry_price=entry_price,
+                )
+            except Exception as slg_exc:
+                logger.warning("StopLossGuard setup failed [%s]: %s", symbol, slg_exc)
     except Exception as exc:
         _update_tv_signal(signal_id, "error", ai_confidence)
         _insert_order(signal_id, symbol, action, quantity, None, "error", None)

@@ -6,6 +6,7 @@ from services.finmind_fetcher import fetch_stock_chip, fetch_margin
 from services.indicator_service import get_indicators
 from services.ptt_sentiment import get_ptt_sentiment
 from services.cmoney_sentiment import get_cmoney_sentiment
+from services.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,13 @@ async def get_stock_quote(symbol: str):
     資料來源：TWSE MIS（盤中每10秒更新）
     symbol: 股票代號，如 2330（不含 .TW）
     """
-    return fetch_stock_quote(symbol.upper())
+    sym = symbol.upper()
+    cached = cache.get(f"quote:{sym}")
+    if cached:
+        return cached
+    result = fetch_stock_quote(sym)
+    cache.set(f"quote:{sym}", result)
+    return result
 
 
 @router.get("/{symbol}/chip")
@@ -28,8 +35,13 @@ async def get_stock_chip(symbol: str):
     個股籌碼：三大法人買賣超（10日）+ 融資融券餘額
     資料來源：FinMind
     """
-    chip = fetch_stock_chip(symbol.upper())
-    margin = fetch_margin(symbol.upper())
+    sym = symbol.upper()
+    cached = cache.get(f"chip:{sym}")
+    if cached:
+        return cached
+
+    chip = fetch_stock_chip(sym)
+    margin = fetch_margin(sym)
 
     # 法人：整理最近5個交易日每天的外資/投信/自營
     rows = chip.get("data", [])
@@ -45,12 +57,14 @@ async def get_stock_chip(symbol: str):
                 net[key] += int(r["buy"]) - int(r["sell"])
         daily.append({"date": d, **net})
 
-    return {
-        "symbol":    symbol.upper(),
+    result = {
+        "symbol":    sym,
         "latest":    chip.get("latest", {}),
         "daily":     daily,
         "margin":    margin,
     }
+    cache.set(f"chip:{sym}", result)
+    return result
 
 
 @router.get("/{symbol}/ohlcv")

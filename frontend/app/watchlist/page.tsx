@@ -74,21 +74,21 @@ function AddStockModal({ onAdd, onClose }: { onAdd: (code: string) => void; onCl
       display:"flex", alignItems:"center", justifyContent:"center",
     }} onClick={onClose}>
       <div style={{
-        background:"#111118", border:"1px solid #2a2a3a", borderRadius:12,
+        background:"var(--c-bg-card)", border:"1px solid var(--c-border)", borderRadius:12,
         padding:"20px", width:360, maxHeight:"70vh", display:"flex", flexDirection:"column",
       }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize:15, fontWeight:700, color:"#e8e8f0", marginBottom:12 }}>新增股票</div>
+        <div style={{ fontSize:15, fontWeight:700, color:"var(--c-text)", marginBottom:12 }}>新增股票</div>
         <input
           ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
           placeholder="輸入代號或名稱…"
           style={{
-            background:"#1a1a24", border:"1px solid #2a2a3a", borderRadius:8,
-            color:"#e8e8f0", fontSize:14, padding:"8px 12px", outline:"none", marginBottom:10,
+            background:"var(--c-bg-deep)", border:"1px solid var(--c-border)", borderRadius:8,
+            color:"var(--c-text)", fontSize:14, padding:"8px 12px", outline:"none", marginBottom:10,
           }}
         />
         <div style={{ overflowY:"auto", flex:1 }}>
           {results.length === 0 ? (
-            <div style={{ color:"#555570", textAlign:"center", padding:"20px 0", fontSize:13 }}>無符合結果</div>
+            <div style={{ color:"var(--c-text-dim)", textAlign:"center", padding:"20px 0", fontSize:13 }}>無符合結果</div>
           ) : results.map(([code, s]) => (
             <div key={code} onClick={() => { onAdd(code); onClose(); }}
               style={{
@@ -96,20 +96,20 @@ function AddStockModal({ onAdd, onClose }: { onAdd: (code: string) => void; onCl
                 padding:"9px 8px", borderRadius:7, cursor:"pointer",
                 borderBottom:"1px solid #1a1a2a",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background="#1a1a2e")}
+              onMouseEnter={e => (e.currentTarget.style.background="var(--c-bg-deep)")}
               onMouseLeave={e => (e.currentTarget.style.background="transparent")}
             >
               <div>
-                <span style={{ fontSize:14, fontWeight:600, color:"#e8e8f0" }}>{s.name}</span>
-                <span style={{ fontSize:12, color:"#555570", marginLeft:6 }}>{code}</span>
+                <span style={{ fontSize:14, fontWeight:600, color:"var(--c-text)" }}>{s.name}</span>
+                <span style={{ fontSize:12, color:"var(--c-text-dim)", marginLeft:6 }}>{code}</span>
               </div>
-              <span style={{ fontSize:11, color:"#8888aa", background:"#1a1a2e", padding:"2px 6px", borderRadius:4 }}>{s.industry}</span>
+              <span style={{ fontSize:11, color:"var(--c-text-dim)", background:"var(--c-bg-deep)", padding:"2px 6px", borderRadius:4 }}>{s.industry}</span>
             </div>
           ))}
         </div>
         <button onClick={onClose} style={{
-          marginTop:12, padding:"7px", borderRadius:8, background:"#1a1a24",
-          border:"1px solid #2a2a3a", color:"#8888aa", cursor:"pointer", fontSize:13,
+          marginTop:12, padding:"7px", borderRadius:8, background:"var(--c-bg-deep)",
+          border:"1px solid var(--c-border)", color:"var(--c-text-dim)", cursor:"pointer", fontSize:13,
         }}>取消</button>
       </div>
     </div>
@@ -123,18 +123,18 @@ function StockCard({ code, onRemove, onClick }: { code: string; onRemove: () => 
   const up = s.change_pct >= 0;
   return (
     <div style={{
-      background:"#111118", border:"1px solid #2a2a3a", borderRadius:9,
+      background:"var(--c-bg-card)", border:"1px solid var(--c-border)", borderRadius:9,
       padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center",
       cursor:"pointer",
     }} onClick={onClick}>
       <div>
-        <span style={{ fontSize:14, fontWeight:700, color:"#e8e8f0" }}>{s.name}</span>
-        <span style={{ fontSize:12, color:"#555570", marginLeft:6 }}>{code}</span>
-        <span style={{ fontSize:11, color:"#8888aa", background:"#1a1a2e", padding:"1px 6px", borderRadius:4, marginLeft:6 }}>{s.industry}</span>
+        <span style={{ fontSize:14, fontWeight:700, color:"var(--c-text)" }}>{s.name}</span>
+        <span style={{ fontSize:12, color:"var(--c-text-dim)", marginLeft:6 }}>{code}</span>
+        <span style={{ fontSize:11, color:"var(--c-text-dim)", background:"var(--c-bg-deep)", padding:"1px 6px", borderRadius:4, marginLeft:6 }}>{s.industry}</span>
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
         <div style={{ textAlign:"right" }}>
-          <div style={{ fontSize:15, fontWeight:700, color:"#e8e8f0" }}>{s.price.toLocaleString()}</div>
+          <div style={{ fontSize:15, fontWeight:700, color:"var(--c-text)" }}>{s.price.toLocaleString()}</div>
           <div style={{ fontSize:12, color: up ? "#ff4d4d" : "#00c076" }}>
             {up ? "▲" : "▼"} {Math.abs(s.change_pct).toFixed(2)}%
           </div>
@@ -191,8 +191,8 @@ export default function WatchlistPage() {
       {/* 頁頭 */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize:20, fontWeight:700, color:"#e8e8f0", margin:0 }}>⭐ 我的自選收藏</h2>
-          <div style={{ fontSize:12, color:"#555570", marginTop:3 }}>共 {totalStocks} 支股票 · 5 個群組</div>
+          <h2 style={{ fontSize:20, fontWeight:700, color:"var(--c-text)", margin:0 }}>⭐ 我的自選收藏</h2>
+          <div style={{ fontSize:12, color:"var(--c-text-dim)", marginTop:3 }}>共 {totalStocks} 支股票 · 5 個群組</div>
         </div>
         <button onClick={() => setShowAdd(true)} style={{
           background:"#00c076", color:"#000", fontWeight:700,
@@ -201,7 +201,7 @@ export default function WatchlistPage() {
       </div>
 
       {/* 群組 Tab */}
-      <div style={{ display:"flex", gap:0, marginBottom:16, borderBottom:"1px solid #2a2a3a", overflowX:"auto" }}>
+      <div style={{ display:"flex", gap:0, marginBottom:16, borderBottom:"1px solid var(--c-border)", overflowX:"auto" }}>
         {groups.map(g => {
           const active = g.id === activeId;
           return (
@@ -214,8 +214,8 @@ export default function WatchlistPage() {
                   onKeyDown={e => { if (e.key === "Enter") renameGroup(g.id); if (e.key === "Escape") setEditingId(null); }}
                   autoFocus
                   style={{
-                    background:"#1a1a2e", border:"1px solid #00c076", borderRadius:"6px 6px 0 0",
-                    color:"#e8e8f0", fontSize:13, padding:"7px 10px", outline:"none", width:100,
+                    background:"var(--c-bg-deep)", border:"1px solid #00c076", borderRadius:"6px 6px 0 0",
+                    color:"var(--c-text)", fontSize:13, padding:"7px 10px", outline:"none", width:100,
                   }}
                 />
               ) : (
@@ -225,7 +225,7 @@ export default function WatchlistPage() {
                   style={{
                     padding:"8px 16px", background:"transparent", border:"none",
                     borderBottom: active ? "2px solid #00c076" : "2px solid transparent",
-                    color: active ? "#e8e8f0" : "#8888aa",
+                    color: active ? "var(--c-text)" : "var(--c-text-dim)",
                     fontSize:13, fontWeight: active ? 600 : 400,
                     cursor:"pointer", whiteSpace:"nowrap",
                   }}
@@ -244,14 +244,14 @@ export default function WatchlistPage() {
       {/* 群組操作列 */}
       {activeGroup && (
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-          <div style={{ fontSize:13, color:"#555570" }}>
+          <div style={{ fontSize:13, color:"var(--c-text-dim)" }}>
             雙擊分頁標籤可更改群組名稱
           </div>
           <button
             onClick={() => { setEditingId(activeGroup.id); setEditName(activeGroup.name); }}
             style={{
-              background:"#1a1a24", border:"1px solid #2a2a3a", borderRadius:6,
-              color:"#8888aa", fontSize:12, padding:"4px 10px", cursor:"pointer",
+              background:"var(--c-bg-deep)", border:"1px solid var(--c-border)", borderRadius:6,
+              color:"var(--c-text-dim)", fontSize:12, padding:"4px 10px", cursor:"pointer",
             }}
           >✏️ 改名</button>
         </div>
@@ -262,14 +262,14 @@ export default function WatchlistPage() {
         activeGroup.stocks.length === 0 ? (
           <div style={{
             textAlign:"center", padding:"60px 20px",
-            border:"2px dashed #2a2a3a", borderRadius:12, color:"#555570",
+            border:"2px dashed var(--c-border)", borderRadius:12, color:"var(--c-text-dim)",
           }}>
             <div style={{ fontSize:36, marginBottom:12 }}>⭐</div>
             <div style={{ fontSize:15, marginBottom:8 }}>此群組尚無股票</div>
             <div style={{ fontSize:13, marginBottom:20 }}>點擊「+ 新增股票」加入觀察清單</div>
             <button onClick={() => setShowAdd(true)} style={{
-              background:"#1a1a2e", border:"1px solid #2a2a3a", borderRadius:8,
-              color:"#8888aa", fontSize:13, padding:"8px 20px", cursor:"pointer",
+              background:"var(--c-bg-deep)", border:"1px solid var(--c-border)", borderRadius:8,
+              color:"var(--c-text-dim)", fontSize:13, padding:"8px 20px", cursor:"pointer",
             }}>+ 新增股票</button>
           </div>
         ) : (
@@ -289,10 +289,10 @@ export default function WatchlistPage() {
       {/* 快速從選股工作流同步 */}
       <div style={{
         marginTop:24, padding:"12px 16px", borderRadius:8,
-        background:"#0d0d15", border:"1px solid #2a2a3a",
+        background:"var(--c-bg-main)", border:"1px solid var(--c-border)",
         display:"flex", justifyContent:"space-between", alignItems:"center",
       }}>
-        <span style={{ fontSize:13, color:"#8888aa" }}>從「選股工作流」的自選股池同步</span>
+        <span style={{ fontSize:13, color:"var(--c-text-dim)" }}>從「選股工作流」的自選股池同步</span>
         <button onClick={() => {
           try {
             const wl: string[] = JSON.parse(localStorage.getItem("tw_radar_watchlist") || "[]");
@@ -304,8 +304,8 @@ export default function WatchlistPage() {
             ));
           } catch { /* empty */ }
         }} style={{
-          background:"#1a1a2e", border:"1px solid #2a2a3a", borderRadius:6,
-          color:"#8888aa", fontSize:13, padding:"5px 14px", cursor:"pointer",
+          background:"var(--c-bg-deep)", border:"1px solid var(--c-border)", borderRadius:6,
+          color:"var(--c-text-dim)", fontSize:13, padding:"5px 14px", cursor:"pointer",
         }}>同步到此群組</button>
       </div>
 

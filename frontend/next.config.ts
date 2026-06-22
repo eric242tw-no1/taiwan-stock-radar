@@ -13,8 +13,12 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   turbopack: {},
   allowedDevOrigins: ["127.0.0.1", "localhost", "exact-pupil-snowfield.ngrok-free.dev"],
+  experimental: {
+    proxyTimeout: 120000, // 120s — debate API can take ~54s
+  },
   async rewrites() {
     return [
       {

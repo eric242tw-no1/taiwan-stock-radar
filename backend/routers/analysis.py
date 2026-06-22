@@ -155,6 +155,16 @@ async def run_uzi(symbol: str):
     ]
     d["consensus"] = d.pop("grade", "")
     d["generated_at"] = datetime.now(timezone.utc).isoformat()
+
+    # AI Audit：記錄 UZI 評分預測
+    try:
+        from services.audit import record_prediction
+        score = d.get("weighted_score") or d.get("score") or 0
+        direction = "up" if score >= 60 else "down" if score < 40 else "neutral"
+        record_prediction(symbol, direction, confidence=score / 100)
+    except Exception:
+        pass
+
     return d
 
 
@@ -178,6 +188,18 @@ async def get_ic_memo(symbol: str, force: bool = False):
     # 生成新 IC 備忘錄
     memo = await _generate_ic_memo(symbol)
     _write_ic_memo(symbol, today, memo)
+
+    # AI Audit：以 base 情境作為預測基準
+    try:
+        from services.audit import record_prediction
+        base = memo.get("scenarios", {}).get("base", {})
+        base_prob = base.get("probability", 0.5)
+        base_price = base.get("target_price")
+        direction = "up" if base_prob >= 0.4 else "down"
+        record_prediction(symbol, direction, confidence=base_prob, target_price=base_price)
+    except Exception:
+        pass
+
     return memo
 
 
@@ -359,13 +381,25 @@ async def run_debate(symbol: str, body: DebateRequest | None = None):
     arbiter = await _run_arbiter(client, symbol, bull_args, bear_args)
 
     from datetime import datetime, timezone
-    return {
+    result = {
         "symbol": symbol,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "bull_arguments": bull_args,
         "bear_arguments": bear_args,
         "arbiter": arbiter,
     }
+
+    # AI Audit：以 arbiter verdict 作為方向預測
+    try:
+        from services.audit import record_prediction
+        verdict = arbiter.get("verdict", "neutral").lower()
+        direction = "up" if "多" in verdict or "bull" in verdict else "down" if "空" in verdict or "bear" in verdict else "neutral"
+        confidence = float(arbiter.get("confidence", 0.5))
+        record_prediction(symbol, direction, confidence=confidence)
+    except Exception:
+        pass
+
+    return result
 
 
 def _get_price_context(symbol: str) -> str:

@@ -132,3 +132,27 @@ if exit
 | `200 deduped` | 60 秒內重複信號 | 正常行為，Redis dedup 保護 |
 | `200 rejected` | AI 信心不足或虧損超限 | 查看 Telegram 通知了解原因 |
 | `200 no_change` | 目標倉位與現有倉位相同 | 正常行為，無需下單 |
+
+---
+
+## Pine Script 匯入步驟（tradingview/ 目錄）
+
+專案提供兩個現成 `.pine` 檔：
+
+| 檔案 | 用途 |
+|------|------|
+| `tradingview/alert_strategy.pine` | MA 黃金交叉 + RSI 策略，含 alertcondition |
+| `tradingview/alert_webhook.pine` | Webhook URL 與 secret 設定說明 |
+
+### 步驟
+
+1. 開啟 TradingView 圖表 → 底部 **Pine Editor**
+2. 點「開啟新腳本」→ 清空預設內容
+3. 複製 `alert_strategy.pine` 全部程式碼貼入編輯器
+4. 點「**儲存**」（輸入名稱，例如 `TW Radar MA+RSI`）→「**新增至圖表**」
+5. 圖表上右鍵 → **「新增提醒」**（`Alt+A`）
+6. 條件選擇：`TW Radar MA+RSI` → `買入信號 (MA黃金交叉 + RSI未超買)`
+7. **Notifications** → 勾選 **Webhook URL** → 填入後端端點
+8. **Alert Message** 替換 `<STRATEGY_ID>` 與 `<HMAC_SECRET>` 後儲存
+
+> `secret` 欄位必須與後端 `WEBHOOK_SECRET` 環境變數完全相同，否則回傳 `403`。
