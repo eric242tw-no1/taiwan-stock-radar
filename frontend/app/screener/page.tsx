@@ -17,46 +17,14 @@ function useIsMobile() {
 }
 
 interface Stock {
-  code: string; name: string; price: number; change_pct: number;
-  volume_bn: number; vol_ratio: number;       // 量比（今日量/5日均量）
-  rsi: number; ma_align: boolean;
-  foreign_buy: boolean; ai_score: number; industry: string;
+  code: string; name: string; price: number | null; change_pct: number;
+  volume_bn: number | null; vol_ratio: number | null;   // 量比（今日量/5日均量）
+  rsi: number | null; ma_align: boolean | null;
+  foreign_buy: boolean | null; ai_score: number | null; industry: string;
   limit_up: boolean; limit_down: boolean;     // 漲/跌停
-  big_order_in: boolean;                      // 大單流入
-  gap_up: boolean;                            // 開盤跳空 >2%
+  big_order_in: boolean | null;               // 大單流入
+  gap_up: boolean | null;                     // 開盤跳空 >2%
 }
-
-const DEMO_STOCKS: Stock[] = [
-  // 權值股
-  { code:"2330", name:"台積電",     price:1082, change_pct: 2.15, volume_bn:182.4, vol_ratio:1.8, rsi:62.4, ma_align:true,  foreign_buy:true,  ai_score:87, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
-  { code:"2382", name:"廣達",       price: 322, change_pct: 1.86, volume_bn: 22.8, vol_ratio:1.4, rsi:64.5, ma_align:true,  foreign_buy:true,  ai_score:82, industry:"電子製造",   limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
-  { code:"2454", name:"聯發科",     price: 940, change_pct: 1.38, volume_bn: 28.7, vol_ratio:1.2, rsi:58.3, ma_align:true,  foreign_buy:true,  ai_score:79, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"2603", name:"長榮",       price: 218, change_pct: 2.83, volume_bn: 41.2, vol_ratio:2.1, rsi:68.9, ma_align:true,  foreign_buy:true,  ai_score:76, industry:"航運",       limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
-  { code:"2317", name:"鴻海",       price: 218, change_pct: 0.92, volume_bn: 34.1, vol_ratio:1.1, rsi:55.1, ma_align:true,  foreign_buy:true,  ai_score:74, industry:"電子製造",   limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"3711", name:"日月光投控", price: 158, change_pct: 1.29, volume_bn: 12.1, vol_ratio:1.3, rsi:57.3, ma_align:true,  foreign_buy:true,  ai_score:72, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"2308", name:"台達電",     price: 392, change_pct: 3.20, volume_bn: 12.3, vol_ratio:2.6, rsi:71.2, ma_align:true,  foreign_buy:false, ai_score:68, industry:"電子零組件", limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
-  { code:"2303", name:"聯電",       price:  52, change_pct: 0.97, volume_bn: 15.4, vol_ratio:1.0, rsi:52.8, ma_align:false, foreign_buy:true,  ai_score:58, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"2881", name:"富邦金",     price: 102, change_pct: 0.49, volume_bn:  8.2, vol_ratio:0.9, rsi:48.7, ma_align:false, foreign_buy:false, ai_score:55, industry:"金融",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"2886", name:"兆豐金",     price:  44, change_pct:-0.22, volume_bn:  5.4, vol_ratio:0.8, rsi:42.1, ma_align:false, foreign_buy:false, ai_score:48, industry:"金融",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"2412", name:"中華電",     price: 128, change_pct: 0.08, volume_bn:  3.1, vol_ratio:0.7, rsi:44.3, ma_align:false, foreign_buy:false, ai_score:45, industry:"電信",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"1301", name:"台塑",       price:  68, change_pct:-0.44, volume_bn:  5.2, vol_ratio:0.9, rsi:36.1, ma_align:false, foreign_buy:false, ai_score:38, industry:"石化",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  // 當沖熱門股
-  { code:"3034", name:"聯詠",       price: 465, change_pct: 4.72, volume_bn: 38.6, vol_ratio:4.2, rsi:74.8, ma_align:true,  foreign_buy:true,  ai_score:84, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
-  { code:"6770", name:"力積電",     price:  39, change_pct: 9.97, volume_bn: 56.3, vol_ratio:8.5, rsi:82.1, ma_align:true,  foreign_buy:false, ai_score:71, industry:"半導體",     limit_up:true,  limit_down:false, big_order_in:true,  gap_up:true  },
-  { code:"3481", name:"群創",       price:  18, change_pct: 9.89, volume_bn: 42.1, vol_ratio:7.3, rsi:79.4, ma_align:true,  foreign_buy:false, ai_score:65, industry:"光電",       limit_up:true,  limit_down:false, big_order_in:true,  gap_up:false },
-  { code:"2615", name:"萬海",       price:  98, change_pct:-9.91, volume_bn: 28.4, vol_ratio:6.1, rsi:21.3, ma_align:false, foreign_buy:false, ai_score:18, industry:"航運",       limit_up:false, limit_down:true,  big_order_in:false, gap_up:false },
-  { code:"2609", name:"陽明",       price:  72, change_pct:-9.86, volume_bn: 31.2, vol_ratio:5.8, rsi:19.7, ma_align:false, foreign_buy:false, ai_score:15, industry:"航運",       limit_up:false, limit_down:true,  big_order_in:false, gap_up:false },
-  { code:"8454", name:"富邦媒",     price: 622, change_pct: 6.32, volume_bn: 48.9, vol_ratio:9.1, rsi:76.3, ma_align:true,  foreign_buy:true,  ai_score:78, industry:"電商",       limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
-  { code:"3037", name:"欣興",       price: 168, change_pct: 3.85, volume_bn: 22.4, vol_ratio:3.4, rsi:65.2, ma_align:true,  foreign_buy:true,  ai_score:73, industry:"PCB",        limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
-  { code:"2376", name:"技嘉",       price: 312, change_pct: 5.41, volume_bn: 19.7, vol_ratio:5.2, rsi:72.1, ma_align:true,  foreign_buy:false, ai_score:69, industry:"電腦",       limit_up:false, limit_down:false, big_order_in:true,  gap_up:true  },
-  { code:"2379", name:"瑞昱",       price: 688, change_pct:-1.72, volume_bn:  9.1, vol_ratio:1.1, rsi:38.4, ma_align:false, foreign_buy:false, ai_score:42, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"6669", name:"緯穎",       price:3450, change_pct: 2.08, volume_bn: 14.3, vol_ratio:1.6, rsi:61.8, ma_align:true,  foreign_buy:true,  ai_score:77, industry:"伺服器",     limit_up:false, limit_down:false, big_order_in:true,  gap_up:false },
-  { code:"2002", name:"中鋼",       price:  24, change_pct:-0.41, volume_bn:  6.8, vol_ratio:0.9, rsi:35.2, ma_align:false, foreign_buy:false, ai_score:36, industry:"鋼鐵",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"4968", name:"立積",       price: 185, change_pct: 1.64, volume_bn:  7.4, vol_ratio:1.5, rsi:53.9, ma_align:true,  foreign_buy:false, ai_score:60, industry:"半導體",     limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"3008", name:"大立光",     price:2280, change_pct:-0.87, volume_bn:  4.1, vol_ratio:0.8, rsi:39.6, ma_align:false, foreign_buy:false, ai_score:44, industry:"光電",       limit_up:false, limit_down:false, big_order_in:false, gap_up:false },
-  { code:"2227", name:"裕日車",     price: 248, change_pct:-9.95, volume_bn: 18.3, vol_ratio:6.9, rsi:17.2, ma_align:false, foreign_buy:false, ai_score:12, industry:"汽車",       limit_up:false, limit_down:true,  big_order_in:false, gap_up:false },
-  { code:"6531", name:"愛普",       price: 895, change_pct:10.00, volume_bn: 12.8, vol_ratio:11.2,rsi:88.4, ma_align:true,  foreign_buy:false, ai_score:62, industry:"半導體",     limit_up:true,  limit_down:false, big_order_in:true,  gap_up:true  },
-];
 
 const INDUSTRIES = ["全部", "半導體", "電子製造", "電子零組件", "航運", "金融", "光電", "PCB", "伺服器", "電商", "電腦", "鋼鐵", "汽車", "電信", "石化"];
 
@@ -112,7 +80,7 @@ function GroupPickerModal({
         ...g,
         stocks: [...g.stocks, {
           code: stock.code, name: stock.name,
-          price: stock.price, change_pct: stock.change_pct, industry: stock.industry,
+          price: stock.price ?? 0, change_pct: stock.change_pct, industry: stock.industry,
         }],
       };
     });
@@ -257,7 +225,17 @@ export default function ScreenerPage() {
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState("");
 
+  // 因子掃描卡片（真實資料）
+  const [scanStocks, setScanStocks] = useState<Stock[]>([]);
+
   useEffect(() => { setWatchlist(loadWL()); }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/screener/factor-scan?limit=100`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.stocks) setScanStocks(d.stocks as Stock[]); })
+      .catch(() => {});
+  }, []);
 
   const runLiveScan = useCallback(async () => {
     setLiveLoading(true); setLiveError(""); setLiveStocks(null);
@@ -310,24 +288,24 @@ export default function ScreenerPage() {
     setPickerStock(null);
   };
 
-  let filtered = DEMO_STOCKS;
+  let filtered = scanStocks;
   if (tab === "watchlist")     filtered = filtered.filter(s => watchlist.includes(s.code));
   if (industry !== "全部")     filtered = filtered.filter(s => s.industry === industry);
-  if (filterMA)                filtered = filtered.filter(s => s.ma_align);
-  if (filterForeign)           filtered = filtered.filter(s => s.foreign_buy);
-  if (filterRSI)               filtered = filtered.filter(s => s.rsi >= 50 && s.rsi < 70);
-  if (filterVolume)            filtered = filtered.filter(s => s.vol_ratio >= 3);
+  if (filterMA)                filtered = filtered.filter(s => s.ma_align === true);
+  if (filterForeign)           filtered = filtered.filter(s => s.foreign_buy === true);
+  if (filterRSI)               filtered = filtered.filter(s => s.rsi != null && s.rsi >= 50 && s.rsi < 70);
+  if (filterVolume)            filtered = filtered.filter(s => s.vol_ratio != null && s.vol_ratio >= 3);
   if (filterLimitUp)           filtered = filtered.filter(s => s.limit_up);
   if (filterLimitDn)           filtered = filtered.filter(s => s.limit_down);
-  if (filterBigOrder)          filtered = filtered.filter(s => s.big_order_in);
-  if (filterGapUp)             filtered = filtered.filter(s => s.gap_up);
-  if (filterOverbought)        filtered = filtered.filter(s => s.rsi >= 70);
-  if (filterOversold)          filtered = filtered.filter(s => s.rsi <= 30);
+  if (filterBigOrder)          filtered = filtered.filter(s => s.big_order_in === true);
+  if (filterGapUp)             filtered = filtered.filter(s => s.gap_up === true);
+  if (filterOverbought)        filtered = filtered.filter(s => s.rsi != null && s.rsi >= 70);
+  if (filterOversold)          filtered = filtered.filter(s => s.rsi != null && s.rsi <= 30);
 
   // 漲跌停排行優先顯示時按量比排
   const effectiveSort = filterLimitUp || filterLimitDn || filterVolume ? "vol_ratio" : sortBy;
   filtered = [...filtered].sort((a, b) =>
-    (b[effectiveSort as keyof Stock] as number) - (a[effectiveSort as keyof Stock] as number)
+    ((b[effectiveSort as keyof Stock] as number) ?? -Infinity) - ((a[effectiveSort as keyof Stock] as number) ?? -Infinity)
   );
 
   return (
@@ -379,7 +357,7 @@ export default function ScreenerPage() {
             color: tab === t ? "#000" : "var(--c-text-dim)",
             border:"1px solid " + (tab === t ? "#00c076" : "var(--c-border)"),
           }}>
-            {t === "scan" ? `因子掃描 (${DEMO_STOCKS.length})` : `自選股池 (${watchlist.length})`}
+            {t === "scan" ? `因子掃描 (${scanStocks.length})` : `自選股池 (${watchlist.length})`}
           </button>
         ))}
       </div>
@@ -520,30 +498,34 @@ export default function ScreenerPage() {
 
                 {/* 價格 */}
                 <div style={{ display:"flex", gap:16, alignItems:"baseline" }}>
-                  <span style={{ fontSize:22, fontWeight:700, color:"var(--c-text)" }}>{s.price.toLocaleString()}</span>
+                  <span style={{ fontSize:22, fontWeight:700, color:"var(--c-text)" }}>{s.price != null ? s.price.toLocaleString() : "—"}</span>
                   <span style={{ fontSize:15, color: up ? "#ff4d4d" : "#00c076", fontWeight:600 }}>
                     {up ? "▲" : "▼"} {Math.abs(s.change_pct).toFixed(2)}%
                   </span>
-                  <span style={{ fontSize:13, color:"var(--c-text-dim)", marginLeft:"auto" }}>量 {s.volume_bn.toFixed(1)}億</span>
+                  {s.volume_bn != null && <span style={{ fontSize:13, color:"var(--c-text-dim)", marginLeft:"auto" }}>量 {s.volume_bn.toFixed(1)}億</span>}
                 </div>
 
                 {/* 指標標籤 */}
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  <Tag label="RSI"   val={s.rsi.toFixed(1)} color={s.rsi>=70?"#ff4d4d":s.rsi<=30?"#3d7eff":"#f5a623"} />
-                  <Tag label="量比"  val={`${s.vol_ratio.toFixed(1)}x`} color={volRatioColor(s.vol_ratio)} />
-                  <Tag label="均線"  val={s.ma_align?"多排":"空排"}  color={s.ma_align?"#00c076":"#ff4d4d"} />
-                  <Tag label="外資"  val={s.foreign_buy?"連買":"流出"} color={s.foreign_buy?"#00c076":"#ff4d4d"} />
+                  {s.rsi != null && <Tag label="RSI"   val={s.rsi.toFixed(1)} color={s.rsi>=70?"#ff4d4d":s.rsi<=30?"#3d7eff":"#f5a623"} />}
+                  {s.vol_ratio != null && <Tag label="量比"  val={`${s.vol_ratio.toFixed(1)}x`} color={volRatioColor(s.vol_ratio)} />}
+                  {s.ma_align != null && <Tag label="均線"  val={s.ma_align?"多排":"空排"}  color={s.ma_align?"#00c076":"#ff4d4d"} />}
+                  {s.foreign_buy != null && <Tag label="外資"  val={s.foreign_buy?"連買":"流出"} color={s.foreign_buy?"#00c076":"#ff4d4d"} />}
                   {s.big_order_in && <Tag label="大單" val="流入" color="#cc44ff" />}
                 </div>
 
                 {/* AI評分 */}
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ flex:1, height:6, background:"var(--c-bg-deep)", borderRadius:3, overflow:"hidden" }}>
-                    <div style={{ width:`${s.ai_score}%`, height:"100%", background:scoreColor(s.ai_score), borderRadius:3 }} />
+                {s.ai_score != null ? (
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ flex:1, height:6, background:"var(--c-bg-deep)", borderRadius:3, overflow:"hidden" }}>
+                      <div style={{ width:`${s.ai_score}%`, height:"100%", background:scoreColor(s.ai_score), borderRadius:3 }} />
+                    </div>
+                    <span style={{ fontSize:13, color:scoreColor(s.ai_score), fontWeight:700, width:28, textAlign:"right" }}>{s.ai_score}</span>
+                    <span style={{ fontSize:12, color:scoreColor(s.ai_score), width:54 }}>{scoreLabel(s.ai_score)}</span>
                   </div>
-                  <span style={{ fontSize:13, color:scoreColor(s.ai_score), fontWeight:700, width:28, textAlign:"right" }}>{s.ai_score}</span>
-                  <span style={{ fontSize:12, color:scoreColor(s.ai_score), width:54 }}>{scoreLabel(s.ai_score)}</span>
-                </div>
+                ) : (
+                  <div style={{ fontSize:11, color:"var(--c-text-dim)" }}>AI 評分尚未產生</div>
+                )}
               </div>
             );
           })}
