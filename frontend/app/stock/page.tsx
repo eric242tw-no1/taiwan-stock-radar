@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAppContext } from "@/contexts/AppContext";
 import AtrStopModal from "@/components/AtrStopModal";
+import { TradingViewModal } from "@/components/TradingViewModal";
 
 
 function useIsMobile() {
@@ -564,6 +565,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
   const { theme } = useAppContext();
   const isMobile = useIsMobile();
   const [symbol, setSymbol]     = useState(initialSymbol);
+  const [showTv, setShowTv]     = useState(false);
   const [input,  setInput]      = useState("");
   const [quote,  setQuote]      = useState<Quote | null>(null);
   const [ind,    setInd]        = useState<Indicator | null>(null);
@@ -892,6 +894,11 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   color: maEnabled.has(days) ? color : "var(--c-text-dim)", fontSize: 17,
                 }}>{label}</button>
               ))}
+              <button onClick={() => setShowTv(true)} title="在 TradingView 查看" style={{
+                background: "transparent", border: "1px solid #3d7eff55",
+                borderRadius: 4, padding: "3px 8px", cursor: "pointer",
+                color: "#3d7eff", fontSize: 17,
+              }}>📈 TV</button>
               <div style={{ width: 1, background: "var(--c-border)", margin: "0 2px" }} />
               {SUB_INDICATORS.map(({ key, label }) => {
                 const active = subEnabled.has(key);
@@ -1535,6 +1542,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
         </div>
       </Card>
       {showAtrModal && <AtrStopModal symbol={symbol} onClose={() => setShowAtrModal(false)} />}
+      {showTv && <TradingViewModal symbol={`TWSE:${symbol}`} title={symbol} theme={theme} onClose={() => setShowTv(false)} />}
     </div>
   );
 }

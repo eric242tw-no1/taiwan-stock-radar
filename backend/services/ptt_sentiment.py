@@ -53,6 +53,39 @@ def _score_text(text: str) -> str:
     return "neutral"
 
 
+def _search_ptt_articles(query: str, pages: int = 2) -> list[dict]:
+    """用 PTT 站內搜尋抓含關鍵字的貼文（命中率遠高於爬最新列表）。"""
+    import urllib.parse
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Cookie": "over18=1",
+    }
+    articles: list[dict] = []
+    q = urllib.parse.quote(query)
+    try:
+        with httpx.Client(headers=headers, timeout=15, follow_redirects=True, verify=False) as client:
+            for page in range(1, pages + 1):
+                url = f"https://www.ptt.cc/bbs/Stock/search?q={q}&page={page}"
+                try:
+                    r = client.get(url)
+                    r.raise_for_status()
+                    found = _parse_articles(r.text)
+                    if not found:
+                        break
+                    articles.extend(found)
+                    time.sleep(0.3)
+                except Exception as e:
+                    logger.warning(f"PTT search 第 {page} 頁失敗: {e}")
+                    break
+    except Exception as e:
+        logger.error(f"PTT search 失敗: {e}")
+    return articles
+
+
 def _fetch_ptt_articles(pages: int = 5) -> list[dict]:
     """爬取 PTT Stock 板最新 N 頁的貼文列表"""
     headers = {
@@ -152,12 +185,16 @@ def get_ptt_sentiment(symbol: str, name: str | None = None) -> dict:
     except Exception:
         pass
 
-    articles = _fetch_ptt_articles(pages=5)
-
-    keywords = {symbol}
-    if name:
-        keywords.add(name)
-    relevant = [a for a in articles if any(kw in a["title"] for kw in keywords)]
+    # 用 PTT 站內搜尋（公司名命中率最高；無名稱時用代號）
+    query = name or symbol
+    articles = _search_ptt_articles(query, pages=2)
+    # 搜尋結果已是相關文；去重後全數採用
+    seen = set()
+    relevant = []
+    for a in articles:
+        if a["title"] not in seen:
+            seen.add(a["title"])
+            relevant.append(a)
 
     bullish_count = 0
     bearish_count = 0

@@ -1,4 +1,6 @@
 "use client";
+import { useState } from "react";
+import { TradingViewModal } from "@/components/TradingViewModal";
 
 export type UsStock = {
   label: string;
@@ -12,8 +14,13 @@ export type UsStock = {
 export function UsStockModal({ stock, onClose }: { stock: UsStock; onClose: () => void }) {
   const up = stock.chg >= 0;
   const color = up ? "#00c076" : "#ff4d4d";
-  const tvSym = stock.is_crypto ? "BTCUSD" : stock.symbol ?? stock.label;
-  const tvUrl = `https://www.tradingview.com/chart/?symbol=${tvSym}`;
+  const tvSym = stock.is_crypto
+    ? `BINANCE:${(stock.symbol ?? stock.label).replace("USD", "")}USD`
+    : (stock.symbol ?? stock.label);
+  const [showTv, setShowTv] = useState(false);
+  if (showTv) {
+    return <TradingViewModal symbol={tvSym} title={stock.label} onClose={() => setShowTv(false)} />;
+  }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#00000099", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--c-bg-modal)", border: "1px solid #3a3a5a", borderRadius: 14, padding: "24px 28px", minWidth: 280, boxShadow: "0 8px 40px #000c" }}>
@@ -43,13 +50,13 @@ export function UsStockModal({ stock, onClose }: { stock: UsStock; onClose: () =
             {up ? "上漲" : "下跌"}
           </span>
         </div>
-        <a href={tvUrl} target="_blank" rel="noopener noreferrer"
-          style={{ display: "block", textAlign: "center", padding: "10px 0", background: "var(--c-bg-deep)", border: "1px solid #3d7eff44", borderRadius: 8, color: "#3d7eff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}
+        <button onClick={() => setShowTv(true)}
+          style={{ display: "block", width: "100%", textAlign: "center", padding: "10px 0", background: "var(--c-bg-deep)", border: "1px solid #3d7eff44", borderRadius: 8, color: "#3d7eff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
           onMouseEnter={e => (e.currentTarget.style.background = "#222240")}
           onMouseLeave={e => (e.currentTarget.style.background = "var(--c-bg-deep)")}
         >
-          📈 在 TradingView 查看完整圖表 →
-        </a>
+          📈 查看 TradingView 圖表 →
+        </button>
       </div>
     </div>
   );
