@@ -374,7 +374,7 @@ async def run_debate(symbol: str, body: DebateRequest | None = None):
     # Bull + Bear 並行執行（各用獨立 client 避免並發連線衝突）
     bull_args, bear_args = await asyncio.gather(
         _run_bull_agent(_new_client(), symbol, price_ctx, extra_context),
-        _run_bear_agent(_new_client(), symbol, price_ctx, extra_context),
+        _run_bear_agent(_new_client(), symbol, price_ctx, [], extra_context),
     )
 
     # Arbiter 裁決
