@@ -334,21 +334,24 @@ export default function PortfolioPage() {
       if (!res.ok) return;
       const data = await res.json();
       const list: Holding[] = data.holdings ?? [];
-      if (list.length > 0) {
-        const codes = list.map(h => h.code).join(",");
-        const qRes = await fetch(`${API}/api/market/batch-quotes?codes=${codes}`);
-        if (qRes.ok) {
-          const qData = await qRes.json();
-          const quotes = qData.quotes as Record<string, { price: number; name: string }>;
-          for (const h of list) {
-            if (quotes[h.code]?.price) {
-              h.current = quotes[h.code].price;
-              if (!h.name && quotes[h.code].name) h.name = quotes[h.code].name;
-            }
-          }
-        }
-      }
+      // 先顯示庫存，報價失敗不影響清單呈現
       setHoldings(list);
+      if (list.length > 0) {
+        try {
+          const codes = list.map(h => h.code).join(",");
+          const qRes = await fetch(`${API}/api/market/batch-quotes?codes=${codes}`);
+          if (qRes.ok) {
+            const qData = await qRes.json();
+            const quotes = qData.quotes as Record<string, { price: number; name: string }>;
+            const enriched = list.map(h => ({
+              ...h,
+              current: quotes[h.code]?.price ?? h.current,
+              name: (!h.name && quotes[h.code]?.name) ? quotes[h.code].name : h.name,
+            }));
+            setHoldings(enriched);
+          }
+        } catch { /* 報價失敗時保留已顯示的庫存 */ }
+      }
     } catch { /* backend 未啟動時靜默 */ } finally {
       setLoading(false);
     }
@@ -392,13 +395,23 @@ export default function PortfolioPage() {
 
   const handleOcrImport = async (list: ParsedPos[]) => {
     const today = new Date().toISOString().slice(0, 10);
+    let ok = 0, fail = 0;
     for (const p of list) {
-      await fetch(`${API}/api/portfolio`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ code:p.code, name:p.name||p.code, qty:p.qty, cost:p.cost, buy_date:today, note:"截圖匯入" }),
-      });
+      try {
+        const res = await fetch(`${API}/api/portfolio`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            code:String(p.code), name:p.name||String(p.code),
+            qty:Math.round(Number(p.qty)) || 0, cost:Number(p.cost) || 0,
+            buy_date:today, note:"截圖匯入",
+          }),
+        });
+        res.ok ? ok++ : fail++;
+      } catch { fail++; }
     }
-    loadHoldings();
+    await loadHoldings();
+    setTab("manual");
+    if (fail > 0) alert(`匯入完成：成功 ${ok} 筆，失敗 ${fail} 筆`);
   };
 
   return (
