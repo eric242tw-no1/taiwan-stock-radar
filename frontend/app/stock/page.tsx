@@ -1031,8 +1031,10 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* AI 深度分析 Tabs */}
+      {/* ── AI 深度分析 Tabs（橫向滿版）── */}
           <div style={{ background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 8, overflow: "hidden" }}>
             {/* Tab 列 */}
             <div style={{ display: "flex", borderBottom: "1px solid var(--c-border)" }}>
@@ -1049,7 +1051,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                     if (key === "ic") fetchIcMemo();
                     if (key === "debate") fetchDebate();
                   }} style={{
-                    flex: 1, padding: "9px 4px", border: "none", cursor: "pointer", fontSize: 12,
+                    flex: 1, padding: "12px 4px", border: "none", cursor: "pointer", fontSize: 16,
                     background: active ? "var(--c-bg-deep)" : "transparent",
                     color: active ? "#3d7eff" : "var(--c-text-dim)",
                     borderBottom: active ? "2px solid #3d7eff" : "2px solid transparent",
@@ -1064,7 +1066,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
             {/* Tab 內容 */}
             <div style={{ padding: 12 }}>
               {activeAiTab === null && (
-                <div style={{ fontSize: 12, color: "var(--c-text-dim)", textAlign: "center", padding: "16px 0" }}>
+                <div style={{ fontSize: 15, color: "var(--c-text-dim)", textAlign: "center", padding: "16px 0" }}>
                   點擊上方 Tab 展開 AI 深度分析
                 </div>
               )}
@@ -1082,20 +1084,22 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   {uziData && (
                     <>
                       <div style={{ textAlign: "center", marginBottom: 12 }}>
-                        <div style={{ fontSize: 11, color: "var(--c-text-dim)" }}>加權總分</div>
-                        <div style={{ fontSize: 28, fontWeight: 700, color: scoreColor(uziData.weighted_score) }}>{uziData.weighted_score}</div>
-                        <div style={{ fontSize: 12, color: "var(--c-text-dim)" }}>{uziData.consensus}</div>
+                        <div style={{ fontSize: 14, color: "var(--c-text-dim)" }}>加權總分</div>
+                        <div style={{ fontSize: 36, fontWeight: 700, color: scoreColor(uziData.weighted_score) }}>{uziData.weighted_score}</div>
+                        <div style={{ fontSize: 15, color: "var(--c-text-dim)" }}>{uziData.consensus}</div>
                       </div>
-                      {uziData.reviewers?.map((r, i) => (
-                        <div key={i} style={{ marginBottom: 8, padding: "8px 10px", background: "var(--c-bg-deep)", borderRadius: 6, borderLeft: `3px solid ${r.score >= 70 ? "#00c076" : r.score >= 40 ? "#f5a623" : "#ff4d4d"}` }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700 }}>{r.name}</span>
-                            <span style={{ fontSize: 12, color: r.score >= 70 ? "#00c076" : r.score >= 40 ? "#f5a623" : "#ff4d4d", fontWeight: 700 }}>{r.score} / {r.verdict}</span>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 8 }}>
+                        {uziData.reviewers?.map((r, i) => (
+                          <div key={i} style={{ padding: "10px 12px", background: "var(--c-bg-deep)", borderRadius: 6, borderLeft: `3px solid ${r.score >= 70 ? "#00c076" : r.score >= 40 ? "#f5a623" : "#ff4d4d"}` }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                              <span style={{ fontSize: 15, fontWeight: 700 }}>{r.name}</span>
+                              <span style={{ fontSize: 15, color: r.score >= 70 ? "#00c076" : r.score >= 40 ? "#f5a623" : "#ff4d4d", fontWeight: 700 }}>{r.score} / {r.verdict}</span>
+                            </div>
+                            <div style={{ fontSize: 14, color: "var(--c-text-dim)", lineHeight: 1.6 }}>{r.reasoning}</div>
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--c-text-dim)", lineHeight: 1.5 }}>{r.reasoning}</div>
-                        </div>
-                      ))}
-                      <div style={{ fontSize: 10, color: "var(--c-border)", marginTop: 6 }}>動能 35% / 價值 35% / 風控 30%</div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--c-border)", marginTop: 8 }}>動能 35% / 價值 35% / 風控 30%</div>
                     </>
                   )}
                 </div>
@@ -1113,10 +1117,11 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   )}
                   {icData && (
                     <>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--c-text-dim)", marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--c-text-dim)", marginBottom: 8 }}>
                         <span>來源：{icData.source ?? "generated"}</span>
                         {icData.current_price && <span>現價：{icData.current_price}</span>}
                       </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 8 }}>
                       {([
                         { key: "bull" as const, label: "🟢 看多情境", color: "#00c076", bg: "#00c07611" },
                         { key: "base" as const, label: "⬜ 基準情境", color: "var(--c-text-dim)", bg: "var(--c-bg-deep)" },
@@ -1125,18 +1130,19 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                         const s = icData.scenarios?.[key];
                         if (!s) return null;
                         return (
-                          <div key={key} style={{ marginBottom: 8, padding: "8px 10px", background: bg, border: `1px solid ${color}44`, borderRadius: 6 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 4 }}>
-                              {label} <span style={{ fontSize: 11, fontWeight: 400, color: "var(--c-text-dim)" }}>({Math.round(s.probability * 100)}%)</span>
-                              <span style={{ float: "right", fontSize: 12 }}>目標 <b style={{ color }}>{s.target_price?.toLocaleString() ?? "—"}</b></span>
+                          <div key={key} style={{ padding: "10px 12px", background: bg, border: `1px solid ${color}44`, borderRadius: 6 }}>
+                            <div style={{ fontSize: 15, fontWeight: 700, color, marginBottom: 6 }}>
+                              {label} <span style={{ fontSize: 13, fontWeight: 400, color: "var(--c-text-dim)" }}>({Math.round(s.probability * 100)}%)</span>
+                              <span style={{ float: "right", fontSize: 14 }}>目標 <b style={{ color }}>{s.target_price?.toLocaleString() ?? "—"}</b></span>
                             </div>
                             {s.key_assumptions?.map((a, i) => (
-                              <div key={i} style={{ fontSize: 11, color: "var(--c-text-dim)" }}>• {a}</div>
+                              <div key={i} style={{ fontSize: 14, color: "var(--c-text-dim)", lineHeight: 1.6 }}>• {a}</div>
                             ))}
                           </div>
                         );
                       })}
-                      <div style={{ fontSize: 11, color: "var(--c-text-dim)", marginTop: 4 }}>
+                      </div>
+                      <div style={{ fontSize: 14, color: "var(--c-text-dim)", marginTop: 8 }}>
                         期望值：<b>{icData.expected_value?.toLocaleString()}</b>
                       </div>
                     </>
@@ -1161,32 +1167,34 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   )}
                   {debateData && (
                     <>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 8 }}>
                       {([
                         { args: debateData.bull_arguments, label: "📈 多方論點", color: "#00c076", bg: "#00c07611" },
                         { args: debateData.bear_arguments, label: "📉 空方論點", color: "#ff4d4d", bg: "#ff4d4d11" },
                       ] as { args: DebateArgument[]; label: string; color: string; bg: string }[]).map(({ args, label, color, bg }) => (
-                        <div key={label} style={{ marginBottom: 8, padding: "8px 10px", background: bg, border: `1px solid ${color}44`, borderRadius: 6 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 6 }}>{label}</div>
+                        <div key={label} style={{ padding: "10px 12px", background: bg, border: `1px solid ${color}44`, borderRadius: 6 }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color, marginBottom: 8 }}>{label}</div>
                           {args?.map((a, i) => (
-                            <div key={i} style={{ marginBottom: 6 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color }}>{a.title}</div>
-                              <div style={{ fontSize: 11, color: "var(--c-text-dim)", lineHeight: 1.5 }}>{a.argument}</div>
-                              {a.evidence && <div style={{ fontSize: 10, color: "var(--c-border)", marginTop: 2 }}>根據：{a.evidence}</div>}
+                            <div key={i} style={{ marginBottom: 8 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color }}>{a.title}</div>
+                              <div style={{ fontSize: 14, color: "var(--c-text-dim)", lineHeight: 1.6 }}>{a.argument}</div>
+                              {a.evidence && <div style={{ fontSize: 12, color: "var(--c-border)", marginTop: 3 }}>根據：{a.evidence}</div>}
                             </div>
                           ))}
                         </div>
                       ))}
-                      <div style={{ marginTop: 8, padding: "8px 12px", background: "#3d7eff11", borderRadius: 6, border: "1px solid #3d7eff44" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#3d7eff" }}>⚖️ 仲裁結論</span>
-                          <span style={{ fontSize: 11, color: "var(--c-text-dim)" }}>信心 {debateData.arbiter.confidence}%</span>
+                      </div>
+                      <div style={{ marginTop: 8, padding: "10px 14px", background: "#3d7eff11", borderRadius: 6, border: "1px solid #3d7eff44" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: "#3d7eff" }}>⚖️ 仲裁結論</span>
+                          <span style={{ fontSize: 14, color: "var(--c-text-dim)" }}>信心 {debateData.arbiter.confidence}%</span>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
                           裁決：{debateData.arbiter.verdict === "bull" ? "看多" : debateData.arbiter.verdict === "bear" ? "看空" : "中性"}
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--c-text-dim)", lineHeight: 1.5 }}>{debateData.arbiter.rationale}</div>
+                        <div style={{ fontSize: 14, color: "var(--c-text-dim)", lineHeight: 1.6 }}>{debateData.arbiter.rationale}</div>
                         {debateData.arbiter.key_risk && (
-                          <div style={{ fontSize: 10, color: "#f5a623", marginTop: 4 }}>⚠️ 主要風險：{debateData.arbiter.key_risk}</div>
+                          <div style={{ fontSize: 13, color: "#f5a623", marginTop: 6 }}>⚠️ 主要風險：{debateData.arbiter.key_risk}</div>
                         )}
                       </div>
                     </>
@@ -1196,8 +1204,15 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
             </div>
           </div>
 
+      {/* ── 資訊面板（橫向 masonry，自動填補空隙）── */}
+      <div style={{
+        columns: isMobile ? "1" : "300px",
+        columnGap: 10, width: "100%",
+      }}>
+
           {/* 論壇情緒 */}
           {sentiment && (sentiment.ptt || sentiment.cmoney) && (
+            <div style={{ breakInside: "avoid", marginBottom: 10 }}>
             <Card title="論壇情緒（散戶觀點）">
               {[
                 { key: "ptt", label: "PTT Stock 板", data: sentiment.ptt },
@@ -1236,9 +1251,11 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
               )}
               <div style={{ fontSize: 10, color: "var(--c-border)", marginTop: 4 }}>關鍵字規則法・30分鐘更新</div>
             </Card>
+            </div>
           )}
 
           {/* 技術指標 */}
+          <div style={{ breakInside: "avoid", marginBottom: 10 }}>
           <Card title="技術指標">
             {ind ? (
               <>
@@ -1315,8 +1332,10 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
               </div>
             )}
           </Card>
+          </div>
 
           {/* 籌碼面板 */}
+          <div style={{ breakInside: "avoid", marginBottom: 10 }}>
           <Card title="籌碼面板">
             {chip ? (() => {
               const { latest, margin } = chip;
@@ -1370,9 +1389,11 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
               <div style={{ color: "var(--c-text-dim)", fontSize: 13, padding: "8px 0" }}>載入中...</div>
             )}
           </Card>
+          </div>
 
           {/* 主力意圖卡片 */}
           {ind?.market_maker_intent && (
+            <div style={{ breakInside: "avoid", marginBottom: 10 }}>
             <Card title="主力意圖">
               {(() => {
                 const mmi = ind.market_maker_intent!;
@@ -1405,9 +1426,9 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                 );
               })()}
             </Card>
+            </div>
           )}
 
-        </div>
       </div>
 
       {/* ── AI 深度分析（評審團 + IC備忘錄）── */}
