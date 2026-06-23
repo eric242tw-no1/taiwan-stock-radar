@@ -127,19 +127,14 @@ def _tw_now() -> str:
     tz = timezone(timedelta(hours=8))
     return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
 
-# ─── 升級開關：有 OpenAI key 優先，其次 Groq，沒有就用 pytesseract ──────────
+# ─── 升級開關：Gemini 優先，其次 OpenRouter GPT-4o，再來 Groq，最後 pytesseract ──
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 _GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-USE_CLAUDE_VISION = bool(_OPENAI_API_KEY) or bool(_GROQ_API_KEY)
+_GEMINI_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
+USE_CLAUDE_VISION = bool(_GEMINI_API_KEY) or bool(_OPENAI_API_KEY) or bool(_GROQ_API_KEY)
 
-
-# ─── Vision 解析（OpenAI GPT-4o 優先，fallback Groq）────────────────────────
-async def _parse_with_claude_vision(image_bytes: bytes) -> list[dict]:
-    import base64, json
-    import httpx
-
-    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-    prompt = """This is a screenshot from Yuanta Securities (元大證券) Taiwan stock portfolio app.
+_VISION_PROMPT = """This is a screenshot from Yuanta Securities (元大證券) Taiwan stock portfolio app.
 
 The table columns are: 名稱(name) | 平均成本(avg cost) | 庫存股數(shares) | 現股當沖(day trade) | 損益(P&L)
 
@@ -152,6 +147,48 @@ Rules:
 - cost: 平均成本 column value (number only)
 - current_price: if visible, otherwise null
 - Include every row in the table"""
+
+
+def _strip_json(text: str) -> list[dict]:
+    import json
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return json.loads(text)
+
+
+async def _gemini_vision(b64: str) -> list[dict]:
+    """Gemini 解析，對 503（伺服器過載）做一次短重試。"""
+    import asyncio
+    import httpx
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{_GEMINI_MODEL}:generateContent?key={_GEMINI_API_KEY}"
+    )
+    payload = {
+        "contents": [{
+            "parts": [
+                {"inline_data": {"mime_type": "image/png", "data": b64}},
+                {"text": _VISION_PROMPT},
+            ],
+        }],
+    }
+    async with httpx.AsyncClient(timeout=40) as client:
+        for attempt in range(2):
+            r = await client.post(url, json=payload)
+            if r.status_code == 503 and attempt == 0:
+                await asyncio.sleep(2)
+                continue
+            r.raise_for_status()
+            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            return _strip_json(text)
+    raise RuntimeError("Gemini 503 retry exhausted")
+
+
+async def _openai_compat_vision(b64: str) -> list[dict]:
+    """OpenAI 相容路徑（OpenRouter GPT-4o 優先，否則 Groq）。"""
+    import httpx
 
     if _OPENAI_API_KEY:
         api_url = "https://openrouter.ai/api/v1/chat/completions"
@@ -169,7 +206,7 @@ Rules:
             "role": "user",
             "content": [
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                {"type": "text", "text": prompt},
+                {"type": "text", "text": _VISION_PROMPT},
             ],
         }],
     }
@@ -180,11 +217,26 @@ Rules:
             json=payload,
         )
         r.raise_for_status()
-
     text = r.json()["choices"][0]["message"]["content"].strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    return json.loads(text)
+    return _strip_json(text)
+
+
+# ─── Vision 解析（Gemini 優先，失敗自動降級 OpenRouter/Groq）──────────────────
+async def _parse_with_claude_vision(image_bytes: bytes) -> list[dict]:
+    import base64
+
+    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    has_fallback = bool(_OPENAI_API_KEY) or bool(_GROQ_API_KEY)
+
+    if _GEMINI_API_KEY:
+        try:
+            return await _gemini_vision(b64)
+        except Exception as exc:
+            if not has_fallback:
+                raise
+            logger.warning("Gemini 解析失敗，降級至 OpenRouter/Groq：%s", exc)
+
+    return await _openai_compat_vision(b64)
 
 
 # ─── pytesseract 本地 OCR 解析（B方案）─────────────────────────────────────
@@ -331,8 +383,17 @@ async def parse_screenshot(file: UploadFile = File(...)):
 @router.get("/parse-screenshot/status")
 async def parse_status():
     """查詢目前使用哪種解析方案"""
+    if _GEMINI_API_KEY:
+        provider = f"gemini:{_GEMINI_MODEL}"
+    elif _OPENAI_API_KEY:
+        provider = "openrouter:gpt-4o"
+    elif _GROQ_API_KEY:
+        provider = "groq:llama-4-scout"
+    else:
+        provider = "tesseract_ocr"
     return {
-        "mode": "claude_vision" if USE_CLAUDE_VISION else "tesseract_ocr",
+        "mode": "vision" if USE_CLAUDE_VISION else "tesseract_ocr",
+        "provider": provider,
         "api_key_configured": USE_CLAUDE_VISION,
-        "upgrade_hint": "在 .env 加入 ANTHROPIC_API_KEY=sk-ant-xxx 即可升級為 Claude Vision",
+        "upgrade_hint": "GEMINI_API_KEY 優先 → OPENAI_API_KEY(OpenRouter) → GROQ_API_KEY",
     }
