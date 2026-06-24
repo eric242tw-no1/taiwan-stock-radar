@@ -23,6 +23,11 @@ BULLISH_KEYWORDS = [
     "站上", "衝破", "噴發", "起漲",
     "外資買超", "投信買超", "法人買超", "大買", "大漲",
     "創新高", "強彈", "多方", "偏多", "衝高", "急漲", "補漲", "黃金交叉",
+    # 擴充：常見利多/口語
+    "利多", "噴", "紅通通", "大紅", "長紅",
+    "新高", "歷史新高", "創高", "暴漲", "狂漲", "回神",
+    "進場", "加碼", "抄底", "撿便宜",
+    "目標價調升", "升評", "翻紅", "領漲", "強漲", "轉強",
 ]
 
 BEARISH_KEYWORDS = [
@@ -31,6 +36,10 @@ BEARISH_KEYWORDS = [
     "套牢", "止損", "跌深", "爆跌",
     "外資賣超", "外資續賣", "投信賣超", "法人賣超", "大賣", "狂跌",
     "創新低", "空方", "偏空", "無力", "撐不住", "急跌", "死亡交叉", "弱勢整理",
+    # 擴充：常見利空/口語
+    "利空", "崩", "大綠", "長黑", "翻黑", "新低", "創低",
+    "暴跌", "重挫", "殺盤", "賣壓", "認賠", "逃命", "領跌",
+    "目標價調降", "降評", "轉弱", "走弱", "雪崩", "血流成河",
 ]
 
 _redis_client: redis.Redis | None = None
@@ -210,14 +219,17 @@ def get_ptt_sentiment(symbol: str, name: str | None = None) -> dict:
             neutral_count += 1
 
     total = len(relevant)
-    if total > 0:
-        score = (bullish_count - bearish_count) / total
+    # 情緒分數只看「有方向性」的文章（多+空），避免大量中性新聞稀釋掉訊號
+    directional = bullish_count + bearish_count
+    if directional > 0:
+        score = (bullish_count - bearish_count) / directional
     else:
         score = 0.0
 
-    if score > 0.1:
+    # 需至少 2 篇方向性文章才下偏多/偏空判定，降低單篇雜訊
+    if directional >= 2 and score > 0.15:
         label = "偏多"
-    elif score < -0.1:
+    elif directional >= 2 and score < -0.15:
         label = "偏空"
     else:
         label = "中性"
