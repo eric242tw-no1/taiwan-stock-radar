@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";  // 預設相對路徑，走 next.config /api 代理避免 CORS
 
 const EMOTIONS = ["冷靜", "貪婪", "恐懼", "猶豫", "自信", "衝動"];
 

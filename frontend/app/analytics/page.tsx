@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";  // 預設相對路徑，走 next.config /api 代理避免 CORS
 
 const COLORS = ["#00c076", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
