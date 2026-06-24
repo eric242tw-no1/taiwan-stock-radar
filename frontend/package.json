@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:preview": "next dev -H 127.0.0.1 -p 3010",
+    "dev:preview": "cross-env NEXT_DIST_DIR=.next-preview next dev -H 127.0.0.1 -p 3010",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -35,6 +35,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",

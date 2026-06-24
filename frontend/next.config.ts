@@ -14,6 +14,9 @@ const withPWA = withPWAInit({
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // 預覽用第二個 dev server 時設 NEXT_DIST_DIR=.next-preview，讓 lock 檔
+  // （distDir/lock）與主 server 分離，繞過 Next 16 同目錄單例鎖
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   turbopack: {},
   allowedDevOrigins: ["127.0.0.1", "localhost", "exact-pupil-snowfield.ngrok-free.dev"],
   experimental: {
