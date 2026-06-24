@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"預設權限：核心 + 開啟外部連結（TradingView 在瀏覽器開啟）","local":true,"windows":["main"],"permissions":["core:default","opener:default","opener:allow-open-url"]}}

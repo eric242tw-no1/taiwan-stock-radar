@@ -29,6 +29,17 @@ export function TradingViewModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // 在系統瀏覽器開啟：Tauri 用 opener plugin（WebView 擋 target=_blank），
+  // 一般瀏覽器 fallback window.open
+  const openInBrowser = async () => {
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(tvFullUrl);
+    } catch {
+      window.open(tvFullUrl, "_blank", "noopener");
+    }
+  };
+
   const src =
     `https://s.tradingview.com/widgetembed/?frameElementId=tv_chart` +
     `&symbol=${encodeURIComponent(symbol)}` +
@@ -52,8 +63,8 @@ export function TradingViewModal({
             📈 {title ?? symbol} · TradingView
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <a href={tvFullUrl} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: 12, color: "#3d7eff", textDecoration: "none" }}>在瀏覽器開啟 ↗</a>
+            <button onClick={openInBrowser}
+              style={{ background: "none", border: "none", fontSize: 12, color: "#3d7eff", cursor: "pointer", padding: 0 }}>在瀏覽器開啟 ↗</button>
             <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--c-text-dim)", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
           </div>
         </div>

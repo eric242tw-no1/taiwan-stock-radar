@@ -7,6 +7,7 @@ const PROJECT: &str = r"C:\Users\ERIC\projects\taiwan-stock-radar";
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Resolve AppData path for SQLite DB
             use tauri::Manager;
