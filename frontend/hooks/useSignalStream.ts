@@ -20,7 +20,9 @@ export interface TickEvent {
   error?: string;
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "";
+// SSE 需直連後端：Next dev 代理會緩衝 EventSource 串流。EventSource 是 simple
+// request 無 CORS preflight，後端 CORS 已允許 localhost:3002（見 main.py）。
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export function useSignalStream() {
   const [signals, setSignals] = useState<SignalEvent[]>([]);
