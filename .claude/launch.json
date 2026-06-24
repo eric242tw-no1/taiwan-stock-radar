@@ -4,10 +4,10 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--hostname", "127.0.0.1"],
+      "runtimeArgs": ["run", "dev", "--", "--hostname", "127.0.0.1", "-p", "3010"],
       "cwd": "C:\\Users\\ERIC\\projects\\taiwan-stock-radar\\frontend",
-      "port": 3002,
-      "autoPort": true
+      "port": 3010,
+      "autoPort": false
     }
   ]
 }
