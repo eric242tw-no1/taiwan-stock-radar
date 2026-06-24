@@ -83,8 +83,8 @@ export default function CalendarPage() {
           borderRadius: 8, padding: "40px 16px", textAlign: "center",
           color: "var(--c-text-dim)", fontSize: 14,
         }}>
-          未來 {days} 天無財報事件。<br />
-          需設定 FINMIND_TOKEN 且後端已啟動才能取得資料。
+          未來 {days} 天無除權息事件。<br />
+          資料來源：TWSE 除權除息預告表（每日 08:00 更新）。
         </div>
       )}
 
