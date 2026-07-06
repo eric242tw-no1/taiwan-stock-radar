@@ -1,64 +1,17 @@
+# ponytail: Redis/Celery 已於 2026-07-04 移除，此檔僅留 fastapi 直跑定義
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    mem_limit: 256m
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   fastapi:
     build: ./backend
     ports:
       - "8000:8000"
     env_file: .env
-    depends_on:
-      redis:
-        condition: service_healthy
     mem_limit: 512m
     volumes:
       - ./backend:/app
       - stockradar_data:/app/data
     command: sh -c "playwright install chromium --with-deps && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-
-  celery-worker:
-    build: ./backend
-    env_file: .env
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-    mem_limit: 512m
-    volumes:
-      - ./backend:/app
-      - stockradar_data:/app/data
-    command: celery -A celery_app worker --loglevel=info --concurrency=2
-    healthcheck:
-      test: ["CMD", "celery", "-A", "celery_app", "inspect", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  flower:
-    build: ./backend
-    env_file: .env
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    ports:
-      - "5555:5555"
-    depends_on:
-      - celery-worker
-    mem_limit: 128m
-    volumes:
-      - ./backend:/app
-    command: celery -A celery_app flower --port=5555
-
 
 volumes:
   stockradar_data:
