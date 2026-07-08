@@ -25,16 +25,19 @@ async def health_check():
         result["status"] = "degraded"
         status_code = 503
 
-    # Check Redis
-    try:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        r = aioredis.from_url(redis_url, socket_connect_timeout=3)
-        await r.ping()
-        await r.aclose()
-    except Exception as e:
-        result["redis"] = f"error: {e}"
-        result["status"] = "degraded"
-        status_code = 503
+    # Check Redis（REDIS_URL 未設定＝單機模式，快取走 SQLite，不算 degraded）
+    redis_url = os.getenv("REDIS_URL", "")
+    if not redis_url:
+        result["redis"] = "disabled"
+    else:
+        try:
+            r = aioredis.from_url(redis_url, socket_connect_timeout=3)
+            await r.ping()
+            await r.aclose()
+        except Exception as e:
+            result["redis"] = f"error: {e}"
+            result["status"] = "degraded"
+            status_code = 503
 
     return JSONResponse(content=result, status_code=status_code)
 

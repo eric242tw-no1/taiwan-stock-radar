@@ -1,9 +1,13 @@
 """
 策略版本化 API (Change A)
 
+GET  /api/strategies                        — 列出策略（供版本管理頁下拉）
 GET  /api/strategies/versions              — 列出版本（可篩選 strategy_id）
 POST /api/strategies/versions              — 建立新版本
 GET  /api/strategies/versions/{id}/activate — 啟用特定版本（同 strategy_id 的其他版本停用）
+
+active 版本的 prompt_template 由 agents/multi_agent_engine._load_active_prompt()
+以 strategies.name 對應 agent 套用於 AI 分析。
 """
 import json
 import logging
@@ -25,22 +29,30 @@ class VersionIn(BaseModel):
     parameters: dict = {}
 
 
+@router.get("")
+def list_strategies():
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute(
+        "SELECT id, name, mode, is_active FROM strategies ORDER BY id"
+    ).fetchall()]
+    conn.close()
+    return {"strategies": rows}
+
+
 @router.get("/versions")
 def list_versions(strategy_id: int | None = Query(None)):
     try:
         conn = get_conn()
         cur = conn.cursor()
+        base = (
+            "SELECT sv.id, sv.strategy_id, s.name AS strategy_name, sv.version, "
+            "sv.prompt_template, sv.parameters, sv.is_active, sv.created_at "
+            "FROM strategy_versions sv JOIN strategies s ON s.id = sv.strategy_id "
+        )
         if strategy_id is not None:
-            cur.execute(
-                "SELECT id, strategy_id, version, parameters, is_active, created_at "
-                "FROM strategy_versions WHERE strategy_id=? ORDER BY created_at DESC",
-                (strategy_id,),
-            )
+            cur.execute(base + "WHERE sv.strategy_id=? ORDER BY sv.created_at DESC", (strategy_id,))
         else:
-            cur.execute(
-                "SELECT id, strategy_id, version, parameters, is_active, created_at "
-                "FROM strategy_versions ORDER BY created_at DESC"
-            )
+            cur.execute(base + "ORDER BY sv.created_at DESC")
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
         return {"versions": rows}

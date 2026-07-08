@@ -1,7 +1,6 @@
-"""Sector Rotation Agent — computes 4/8/13-week momentum per GICS sector and caches in Redis."""
+"""Sector Rotation Agent — computes 4/8/13-week momentum per GICS sector and caches in SQLite."""
 import json
 import logging
-import os
 from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
@@ -22,8 +21,8 @@ SECTOR_TICKERS: dict[str, list[str]] = {
     "房地產": ["5522.TW", "2915.TW"],
 }
 
-REDIS_KEY = "sector_rotation"
-REDIS_TTL = 7 * 24 * 3600  # 7 days
+CACHE_KEY = "sector_rotation"
+CACHE_TTL = 7 * 24 * 3600  # 7 days
 
 
 def _fetch_price_series(ticker: str, days: int) -> list[float]:
@@ -70,7 +69,7 @@ def _sector_score(tickers: list[str]) -> dict:
 
 
 def compute_sector_rotation() -> list[dict]:
-    """Compute sector rotation rankings and cache to Redis. Returns sorted list."""
+    """Compute sector rotation rankings and cache to SQLite. Returns sorted list."""
     results = []
     for sector, tickers in SECTOR_TICKERS.items():
         scores = _sector_score(tickers)
@@ -82,12 +81,8 @@ def compute_sector_rotation() -> list[dict]:
 
     payload = {"computed_at": str(date.today()), "sectors": results}
 
-    try:
-        import redis as redis_lib
-        r = redis_lib.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-        r.setex(REDIS_KEY, REDIS_TTL, json.dumps(payload))
-        logger.info("sector_rotation: cached %d sectors", len(results))
-    except Exception as exc:
-        logger.error("sector_rotation: Redis cache failed — %s", exc)
+    from services.kv_store import kv_set
+    kv_set(CACHE_KEY, json.dumps(payload), CACHE_TTL)
+    logger.info("sector_rotation: cached %d sectors", len(results))
 
     return results

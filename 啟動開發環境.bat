@@ -6,58 +6,17 @@ echo  Taiwan AI Stock Radar - Dev Startup
 echo ========================================
 echo.
 
-:: ── 0. Check Docker Desktop ─────────────────────────────────────
-echo [0/3] Checking Docker Desktop...
-docker info >nul 2>&1
-if errorlevel 1 (
-    echo       Docker not running. Starting Docker Desktop...
-    start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    echo       Waiting for Docker Engine (up to 120s)...
-    set /a tries=0
-    :wait_docker
-    timeout /t 5 /nobreak >nul
-    set /a tries+=1
-    docker info >nul 2>&1
-    if errorlevel 1 (
-        if %tries% LSS 24 goto wait_docker
-        echo       [WARN] Docker not ready. Skipping Redis...
-        goto skip_docker
-    )
-    echo       Docker ready.
-) else (
-    echo       Docker already running.
-)
-
-:: ── 1. Start Redis only ───────────────────────────────────────────
-echo.
-echo [1/3] Starting Redis...
-docker-compose -f "%~dp0docker-compose.yml" up redis -d
-
-echo       Waiting for Redis...
-set /a rd_tries=0
-:wait_redis
-docker exec taiwan-stock-radar-redis-1 redis-cli ping >nul 2>&1
-if errorlevel 1 (
-    timeout /t 2 /nobreak >nul
-    set /a rd_tries+=1
-    if %rd_tries% LSS 10 goto wait_redis
-    echo       [WARN] Redis may not be ready. Continuing...
-) else (
-    echo       Redis OK
-)
-goto after_docker
-
-:skip_docker
-echo       [SKIP] Redis skipped (Docker not available)
-
-:after_docker
-
-:: ── 2. Start FastAPI Backend ─────────────────────────────────────
-echo.
-echo [2/3] Starting FastAPI backend (port 8000)...
+:: ── 1. Start FastAPI Backend ─────────────────────────────────────
+echo [1/3] Starting FastAPI backend (port 8000)...
 start "FastAPI Backend" powershell -NoExit -Command ^
   "cd 'C:\Users\ERIC\projects\taiwan-stock-radar\backend'; .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000 --reload"
 
+:: ── 2. Start Next.js Frontend ────────────────────────────────────
+echo [2/3] Starting Next.js frontend (port 3002)...
+start "Next.js Dev Server" powershell -NoExit -Command ^
+  "cd 'C:\Users\ERIC\projects\taiwan-stock-radar\frontend'; npm run dev -- --hostname 127.0.0.1 -p 3002"
+
+echo.
 echo       Waiting for backend...
 set /a api_tries=0
 :wait_api
@@ -65,19 +24,35 @@ timeout /t 3 /nobreak >nul
 curl -s http://localhost:8000/api/health >nul 2>&1
 if errorlevel 1 (
     set /a api_tries+=1
-    if %api_tries% LSS 10 goto wait_api
+    if %api_tries% LSS 20 goto wait_api
     echo       [WARN] Backend may not be ready. Continuing...
 ) else (
     echo       FastAPI OK
 )
 
-:: ── 3. Start Next.js Frontend ────────────────────────────────────
-echo.
-echo [3/3] Starting Next.js frontend (port 3002)...
-start "Next.js Dev Server" powershell -NoExit -Command ^
-  "cd 'C:\Users\ERIC\projects\taiwan-stock-radar\frontend'; npm run dev -- --hostname 127.0.0.1 -p 3002"
+echo       Waiting for frontend...
+set /a fe_tries=0
+:wait_fe
+timeout /t 3 /nobreak >nul
+curl -s http://localhost:3002 >nul 2>&1
+if errorlevel 1 (
+    set /a fe_tries+=1
+    if %fe_tries% LSS 20 goto wait_fe
+    echo       [WARN] Frontend may not be ready. Continuing...
+) else (
+    echo       Next.js OK
+)
 
-timeout /t 5 /nobreak >nul
+:: ── 3. Open desktop window ───────────────────────────────────────
+echo.
+echo [3/3] Opening app window...
+set "TAURI_EXE=%~dp0frontend\src-tauri\target\release\taiwan-ai-stock-radar.exe"
+if exist "%TAURI_EXE%" (
+    start "" "%TAURI_EXE%"
+) else (
+    echo       Tauri exe not found, opening browser instead...
+    start "" http://localhost:3002
+)
 
 echo.
 echo All services started!

@@ -4,7 +4,6 @@ detect(bars) 接收最近 N 根 K 棒（list of dict: open/high/low/close），
 回傳當前偵測到的形態名稱列表。
 """
 from __future__ import annotations
-import numpy as np
 
 Bar = dict  # {"open": float, "high": float, "low": float, "close": float}
 

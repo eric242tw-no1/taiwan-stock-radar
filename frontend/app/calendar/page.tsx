@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 const API = "";
 
@@ -108,15 +109,20 @@ export default function CalendarPage() {
                 return (
                   <div key={i} style={{
                     display: "flex", alignItems: "center", gap: 12,
-                    padding: "7px 14px",
+                    padding: "7px 14px", cursor: "default",
+                    transition: "background 0.15s ease, border-color 0.15s ease",
+                    borderLeft: `6px solid ${color}`,
+                    background: `${color}0a`,
                     borderBottom: i < grouped[date].length - 1 ? "1px solid var(--c-border)" : "none",
-                  }}>
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = `${color}22`)}
+                    onMouseLeave={e => (e.currentTarget.style.background = `${color}0a`)}>
                     <span style={{
                       fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 700,
                       background: `${color}22`, border: `1px solid ${color}66`, color,
                       whiteSpace: "nowrap",
                     }}>{label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#3d7eff", width: 48 }}>{e.symbol}</span>
+                    <Link href={`/stock?s=${e.symbol}`} style={{ fontSize: 13, fontWeight: 700, color: "#3d7eff", width: 48, textDecoration: "none" }}>{e.symbol}</Link>
                     <span style={{ fontSize: 13, color: "var(--c-text-mid)" }}>{e.name}</span>
                     <span style={{ fontSize: 11, color: "var(--c-text-dim)", marginLeft: "auto" }}>{e.description}</span>
                   </div>

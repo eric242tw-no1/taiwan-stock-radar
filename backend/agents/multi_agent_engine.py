@@ -280,7 +280,7 @@ def _get_macro_summary() -> str:
         from services.data_fetcher import get_cached_us_indices
         tw = get_cached_tw_market()
         us = get_cached_us_indices()
-        tw_idx = tw.get("index", {})
+        tw_idx = tw.get("taiex", {})
         return (
             f"台股加權指數={tw_idx.get('close', 'N/A')}, "
             f"S&P500={us.get('sp500', {}).get('price', 'N/A')}, "

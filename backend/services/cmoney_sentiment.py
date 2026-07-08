@@ -1,21 +1,19 @@
 """
 CMoney 個股討論區情緒爬蟲
 使用 Playwright 非同步爬取個股討論頁最近留言，以關鍵字規則判斷看漲/看跌情緒
-快取於 Redis（TTL 30 分鐘）；爬取失敗時 graceful 回傳 None
+快取於 SQLite cache 表（TTL 30 分鐘）；爬取失敗時 graceful 回傳 None
 """
 
 import asyncio
 import json
 import logging
-import os
 import random
 from datetime import datetime, timezone
 
-import redis
+from services.kv_store import kv_get, kv_set
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 CACHE_TTL = 1800  # 30 分鐘
 MAX_COMMENTS = 30
 
@@ -38,16 +36,6 @@ BEARISH_KEYWORDS = [
     "創新低", "死貓彈", "空方", "偏空", "無力", "撐不住",
     "急跌", "趨勢向下", "死亡交叉", "開盤空", "弱勢整理",
 ]
-
-_redis_client: redis.Redis | None = None
-
-
-def _get_redis() -> redis.Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    return _redis_client
-
 
 def _score_text(text: str) -> str:
     bull = sum(1 for kw in BULLISH_KEYWORDS if kw in text)
@@ -107,18 +95,14 @@ async def _scrape_cmoney(symbol: str) -> list[str]:
 def get_cmoney_sentiment(symbol: str) -> dict | None:
     """
     取得指定股票代號的 CMoney 討論區情緒分析。
-    同步包裝非同步爬取，優先讀 Redis 快取。
+    同步包裝非同步爬取，優先讀快取。
     失敗時回傳 None（前端不顯示此區塊）。
     """
     cache_key = f"cmoney_sentiment:{symbol}"
-    try:
-        r = _get_redis()
-        cached = r.get(cache_key)
-        if cached:
-            data = json.loads(cached)
-            return data if data else None
-    except Exception:
-        pass
+    cached = kv_get(cache_key)
+    if cached:
+        data = json.loads(cached)
+        return data if data else None
 
     # 執行非同步爬取
     try:
@@ -131,10 +115,7 @@ def get_cmoney_sentiment(symbol: str) -> dict | None:
 
     if not comments:
         # 快取空結果避免頻繁重試
-        try:
-            _get_redis().setex(cache_key, 300, json.dumps(None))
-        except Exception:
-            pass
+        kv_set(cache_key, json.dumps(None), 300)
         return None
 
     bullish_count = 0
@@ -172,9 +153,6 @@ def get_cmoney_sentiment(symbol: str) -> dict | None:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    try:
-        _get_redis().setex(cache_key, CACHE_TTL, json.dumps(result, ensure_ascii=False))
-    except Exception:
-        pass
+    kv_set(cache_key, json.dumps(result, ensure_ascii=False), CACHE_TTL)
 
     return result

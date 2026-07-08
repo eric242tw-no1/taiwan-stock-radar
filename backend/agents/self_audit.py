@@ -106,9 +106,9 @@ class SelfAudit:
     def _check_anomalies(self) -> list[str]:
         """從快取中找出報價異常的股票（change_pct 絕對值 > 12%）"""
         try:
-            from services.indicator_service import _indicator_cache
+            from services.indicator_service import _cache
             anomalies = []
-            for sym, data in _indicator_cache.items():
+            for sym, data in _cache.items():
                 pct = data.get("change_pct", 0) or 0
                 if abs(pct) > 12:
                     anomalies.append(f"{sym}({pct:+.1f}%)")

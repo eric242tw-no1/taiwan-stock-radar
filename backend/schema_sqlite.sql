@@ -375,3 +375,15 @@ INSERT OR IGNORE INTO stock_pool (symbol, name) VALUES
     ('2308', '台達電'),
     ('2881', '富邦金'),
     ('2382', '廣達');
+
+-- Indexes for common query patterns (WHERE / ORDER BY columns not covered by PK)
+CREATE INDEX IF NOT EXISTS idx_ai_audit_predicted_at   ON ai_audit(predicted_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_read      ON notifications(is_read, id);
+CREATE INDEX IF NOT EXISTS idx_trade_journal_symbol     ON trade_journal(symbol, entry_at);
+CREATE INDEX IF NOT EXISTS idx_analysis_history_symbol  ON analysis_history(symbol, created_at);
+CREATE INDEX IF NOT EXISTS idx_backtest_symbol          ON backtest_results(symbol, created_at);
+CREATE INDEX IF NOT EXISTS idx_pairs_long               ON pairs_config(symbol_long);
+CREATE INDEX IF NOT EXISTS idx_pairs_short              ON pairs_config(symbol_short);
+CREATE INDEX IF NOT EXISTS idx_tv_signals_status        ON tv_signals(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_indicators_trade_date    ON stock_indicators_daily(trade_date);
+CREATE INDEX IF NOT EXISTS idx_watchlist_symbol         ON watchlist(symbol);

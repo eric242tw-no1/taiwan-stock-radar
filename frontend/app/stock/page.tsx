@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAppContext } from "@/contexts/AppContext";
 import AtrStopModal from "@/components/AtrStopModal";
-import { TradingViewModal } from "@/components/TradingViewModal";
+import { openTvInBrowser } from "@/components/TradingViewModal";
 
 
 function useIsMobile() {
@@ -278,7 +278,7 @@ function computeScores(
 // ── 共用元件 ─────────────────────────────────────────────────
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 12 }}>
+    <div style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
       {title && <div style={{ fontSize: 17, color: "var(--c-text-dim)", marginBottom: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase" }}>{title}</div>}
       {children}
     </div>
@@ -419,7 +419,8 @@ function CandleChart({ bars, maEnabled, subEnabled, theme }: {
         const w = el.getBoundingClientRect().width || el.offsetWidth || 700;
         return createChart(el, {
           width: w, height,
-          layout: { background: { color: chartBg }, textColor: chartText },
+          // attributionLogo: 關掉角落的 TradingView logo（連到 TV 首頁易誤點；看個股線圖用工具列 📈 TV 按鈕）
+          layout: { background: { color: chartBg }, textColor: chartText, attributionLogo: false },
           grid: { vertLines: { color: chartGrid }, horzLines: { color: chartGrid } },
           crosshair: { mode: 1 },
           timeScale: { borderColor: "var(--c-border)", timeVisible: !hideTime, visible: !hideTime },
@@ -565,7 +566,6 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
   const { theme } = useAppContext();
   const isMobile = useIsMobile();
   const [symbol, setSymbol]     = useState(initialSymbol);
-  const [showTv, setShowTv]     = useState(false);
   const [input,  setInput]      = useState("");
   const [quote,  setQuote]      = useState<Quote | null>(null);
   const [ind,    setInd]        = useState<Indicator | null>(null);
@@ -756,7 +756,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
   ] as const;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", boxSizing: "border-box", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, width: "100%", boxSizing: "border-box", overflow: "hidden" }}>
 
       {/* ── 搜尋列 ── */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -774,21 +774,22 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
           />
           <button onClick={search} style={{
             background: "#00c076", border: "none", borderRadius: "0 6px 6px 0",
-            padding: "7px 14px", color: "#000", fontWeight: 700, cursor: "pointer", fontSize: 17,
+            padding: "7px 14px", color: "#000", fontWeight: 700, cursor: "pointer", fontSize: 17, transition: "all 0.15s ease",
           }}>查詢</button>
         </div>
         <button onClick={() => setShowAtrModal(true)} style={{
           padding: "6px 14px", borderRadius: 6, background: "transparent",
           border: "1px solid var(--c-border)", color: "var(--c-text-dim)",
-          cursor: "pointer", fontSize: 14,
+          cursor: "pointer", fontSize: 14, transition: "all 0.15s ease",
         }}>📐 ATR停損</button>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           {QUICK_PICKS.map(p => (
             <button key={p.code} onClick={() => setSymbol(p.code)} style={{
               background: symbol === p.code ? "var(--c-bg-deep)" : "var(--c-bg-card)",
               border: `1px solid ${symbol === p.code ? "#00c076" : "var(--c-border)"}`,
-              borderRadius: 5, padding: "4px 9px", cursor: "pointer",
+              borderRadius: 20, padding: "4px 12px", cursor: "pointer",
               color: symbol === p.code ? "#00c076" : "var(--c-text-dim)", fontSize: 18,
+              transition: "all 0.15s ease",
             }}>{p.code} {p.name}</button>
           ))}
         </div>
@@ -798,8 +799,9 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
         {/* Hero Card */}
         <div style={{
           background: "linear-gradient(135deg, var(--c-bg-main) 0%, var(--c-bg-card) 100%)",
-          border: "1px solid var(--c-border)", borderRadius: 10, padding: "12px 16px 12px 12px",
+          border: "1px solid var(--c-border)", borderRadius: 10, padding: "14px 18px 14px 14px",
           display: "flex", alignItems: "center", gap: 20, overflow: "hidden", minWidth: 0,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
         }}>
           {/* 名稱 + 狀態 */}
           <div style={{ minWidth: 100 }}>
@@ -865,41 +867,43 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
       <div style={{
         display: "grid",
         gridTemplateColumns: isMobile ? "1fr" : "1fr 260px",
-        gap: 10, width: "100%",
+        gap: 12, width: "100%",
       }}>
 
         {/* K 線圖 */}
         <div style={{ minWidth: 0, overflow: "hidden" }}>
         <Card>
           {/* 控制列 */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
             {/* 週期 */}
-            <div style={{ display: "flex", gap: 4 }}>
+            <div style={{ display: "flex", gap: 4, background: "var(--c-bg-deep)", borderRadius: 8, padding: 3 }}>
               {PERIODS.map(p => (
                 <button key={p.value} onClick={() => setPeriod(p)} style={{
-                  background: period.value === p.value ? "var(--c-bg-deep)" : "transparent",
-                  border: `1px solid ${period.value === p.value ? "#00c076" : "var(--c-border)"}`,
-                  borderRadius: 4, padding: "3px 10px", cursor: "pointer",
+                  background: period.value === p.value ? "var(--c-bg-card)" : "transparent",
+                  border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", height: 32,
                   color: period.value === p.value ? "#00c076" : "var(--c-text-dim)", fontSize: 18,
+                  boxShadow: period.value === p.value ? "0 1px 2px rgba(0,0,0,0.15)" : "none",
+                  transition: "all 0.15s ease",
                 }}>{p.label}</button>
               ))}
             </div>
             {/* 均線 + 子指標 */}
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", background: "var(--c-bg-deep)", borderRadius: 8, padding: 3 }}>
               {MA_OPTIONS.map(({ label, days, color }) => (
                 <button key={days} onClick={() => toggleMa(days)} style={{
                   background: maEnabled.has(days) ? `${color}22` : "transparent",
-                  border: `1px solid ${maEnabled.has(days) ? color : "var(--c-border)"}`,
-                  borderRadius: 4, padding: "3px 8px", cursor: "pointer",
+                  border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", height: 32,
                   color: maEnabled.has(days) ? color : "var(--c-text-dim)", fontSize: 17,
+                  boxShadow: maEnabled.has(days) ? `inset 0 0 0 1px ${color}` : "none",
+                  transition: "all 0.15s ease",
                 }}>{label}</button>
               ))}
-              <button onClick={() => setShowTv(true)} title="在 TradingView 查看" style={{
-                background: "transparent", border: "1px solid #3d7eff55",
-                borderRadius: 4, padding: "3px 8px", cursor: "pointer",
-                color: "#3d7eff", fontSize: 17,
+              {/* 台股資料不授權嵌入式 widget，直接開系統瀏覽器的 TradingView 完整版 */}
+              <button onClick={() => openTvInBrowser(`TWSE:${symbol}`)} title="在 TradingView 查看" style={{
+                background: "transparent", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", height: 32,
+                color: "#3d7eff", fontSize: 17, transition: "all 0.15s ease",
               }}>📈 TV</button>
-              <div style={{ width: 1, background: "var(--c-border)", margin: "0 2px" }} />
+              <div style={{ width: 1, background: "var(--c-border)", margin: "4px 2px" }} />
               {SUB_INDICATORS.map(({ key, label }) => {
                 const active = subEnabled.has(key);
                 return (
@@ -908,15 +912,18 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                     next.has(key) ? next.delete(key) : next.add(key);
                     return next;
                   })} style={{
-                    background: active ? "var(--c-bg-deep)" : "transparent",
-                    border: `1px solid ${active ? "#3d7eff" : "var(--c-border)"}`,
-                    borderRadius: 4, padding: "3px 8px", cursor: "pointer",
+                    background: active ? "var(--c-bg-card)" : "transparent",
+                    border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", height: 32,
                     color: active ? "#3d7eff" : "var(--c-text-dim)", fontSize: 17,
+                    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.15)" : "none",
+                    transition: "all 0.15s ease",
                   }}>{label}</button>
                 );
               })}
             </div>
           </div>
+
+          <div style={{ height: 1, background: "var(--c-border)", margin: "4px 0 10px", opacity: 0.5 }} />
 
           {loading && <div style={{ color: "var(--c-text-dim)", fontSize: 18, marginBottom: 6 }}>載入K線...</div>}
           {bars.length > 0
@@ -931,12 +938,13 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
         </div>
 
         {/* 右側面板 */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
           {/* AI Score 卡片 */}
           <div style={{
             background: "var(--c-bg-main)", border: `1px solid ${hasAi ? "#00c07633" : "var(--c-border)"}`, borderRadius: 8, padding: "14px 16px",
             display: "flex", flexDirection: "column", alignItems: "center",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: "var(--c-text-dim)", letterSpacing: 1, textTransform: "uppercase" }}>AI 綜合評分</div>
@@ -1042,7 +1050,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
       </div>
 
       {/* ── AI 深度分析 Tabs（橫向滿版）── */}
-          <div style={{ background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 8, overflow: "hidden" }}>
+          <div style={{ background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
             {/* Tab 列 */}
             <div style={{ display: "flex", borderBottom: "1px solid var(--c-border)" }}>
               {([
@@ -1059,10 +1067,11 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                     if (key === "debate") fetchDebate();
                   }} style={{
                     flex: 1, padding: "12px 4px", border: "none", cursor: "pointer", fontSize: 16,
-                    background: active ? "var(--c-bg-deep)" : "transparent",
+                    background: active ? "linear-gradient(180deg, #3d7eff22 0%, #3d7eff11 100%)" : "transparent",
                     color: active ? "#3d7eff" : "var(--c-text-dim)",
                     borderBottom: active ? "2px solid #3d7eff" : "2px solid transparent",
-                    fontWeight: active ? 700 : 400, transition: "all 0.15s",
+                    fontWeight: active ? 700 : 400, transition: "all 0.15s ease",
+                    textShadow: active ? "0 0 8px #3d7eff33" : "none",
                   }}>
                     {icon} {label}
                   </button>
@@ -1085,7 +1094,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   {uziError && (
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 12, color: "#ff4d4d", marginBottom: 8 }}>{uziError}</div>
-                      <button onClick={() => { setUziData(null); setUziError(""); fetchUzi(); }} style={{ fontSize: 12, padding: "4px 12px", background: "var(--c-bg-deep)", border: "1px solid var(--c-border)", borderRadius: 4, color: "var(--c-text)", cursor: "pointer" }}>重試</button>
+                      <button onClick={() => { setUziData(null); setUziError(""); fetchUzi(); }} style={{ fontSize: 12, padding: "4px 12px", background: "var(--c-bg-deep)", border: "1px solid var(--c-border)", borderRadius: 4, color: "var(--c-text)", cursor: "pointer", transition: "all 0.15s ease" }}>重試</button>
                     </div>
                   )}
                   {uziData && (
@@ -1119,7 +1128,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   {icError && (
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 12, color: "#ff4d4d", marginBottom: 8 }}>{icError}</div>
-                      <button onClick={() => { setIcData(null); setIcError(""); fetchIcMemo(); }} style={{ fontSize: 12, padding: "4px 12px", background: "var(--c-bg-deep)", border: "1px solid var(--c-border)", borderRadius: 4, color: "var(--c-text)", cursor: "pointer" }}>重試</button>
+                      <button onClick={() => { setIcData(null); setIcError(""); fetchIcMemo(); }} style={{ fontSize: 12, padding: "4px 12px", background: "var(--c-bg-deep)", border: "1px solid var(--c-border)", borderRadius: 4, color: "var(--c-text)", cursor: "pointer", transition: "all 0.15s ease" }}>重試</button>
                     </div>
                   )}
                   {icData && (
@@ -1169,7 +1178,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                   {debateError && (
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 12, color: "#ff4d4d", marginBottom: 8 }}>{debateError}</div>
-                      <button onClick={() => { setDebateData(null); setDebateError(""); fetchDebate(); }} style={{ fontSize: 12, padding: "4px 12px", background: "var(--c-bg-deep)", border: "1px solid var(--c-border)", borderRadius: 4, color: "var(--c-text)", cursor: "pointer" }}>重試</button>
+                      <button onClick={() => { setDebateData(null); setDebateError(""); fetchDebate(); }} style={{ fontSize: 12, padding: "4px 12px", background: "var(--c-bg-deep)", border: "1px solid var(--c-border)", borderRadius: 4, color: "var(--c-text)", cursor: "pointer", transition: "all 0.15s ease" }}>重試</button>
                     </div>
                   )}
                   {debateData && (
@@ -1211,15 +1220,16 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
             </div>
           </div>
 
-      {/* ── 資訊面板（橫向 masonry，自動填補空隙）── */}
+      {/* ── 資訊面板（2 欄 grid）── */}
       <div style={{
-        columns: isMobile ? "1" : "300px",
-        columnGap: 10, width: "100%",
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+        gap: 10, width: "100%",
       }}>
 
           {/* 論壇情緒 */}
           {sentiment && (sentiment.ptt || sentiment.cmoney) && (
-            <div style={{ breakInside: "avoid", marginBottom: 10 }}>
+            <div>
             <Card title="論壇情緒（散戶觀點）">
               {[
                 { key: "ptt", label: "PTT Stock 板", data: sentiment.ptt },
@@ -1262,7 +1272,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
           )}
 
           {/* 技術指標 */}
-          <div style={{ breakInside: "avoid", marginBottom: 10 }}>
+          <div>
           <Card title="技術指標">
             {ind ? (
               <>
@@ -1341,8 +1351,46 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
           </Card>
           </div>
 
+
+          {/* 主力意圖卡片 */}
+          {ind?.market_maker_intent && (
+            <div>
+            <Card title="主力意圖">
+              {(() => {
+                const mmi = ind.market_maker_intent!;
+                const phaseColor: Record<string, string> = {
+                  "吸籌": "#00c076", "拉抬": "#ff4d4d", "出貨": "#f5a623",
+                  "打壓": "#3d7eff", "觀望": "var(--c-text-dim)",
+                };
+                const color = phaseColor[mmi.phase] ?? "var(--c-text-dim)";
+                const confPct = Math.round(mmi.confidence * 100);
+                return (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <span style={{
+                        fontSize: 15, fontWeight: 800, padding: "3px 12px", borderRadius: 5,
+                        background: "var(--c-bg-deep)", border: `1px solid ${color}66`, color,
+                      }}>{mmi.phase}</span>
+                      <span style={{ fontSize: 12, color: "var(--c-text-dim)" }}>信心度 {confPct}%</span>
+                    </div>
+                    <div style={{ height: 4, background: "var(--c-border)", borderRadius: 2, marginBottom: 8 }}>
+                      <div style={{ height: "100%", borderRadius: 2, background: color, width: `${confPct}%`, transition: "width 0.4s" }} />
+                    </div>
+                    {mmi.signals.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {mmi.signals.map((s, i) => (
+                          <div key={i} style={{ fontSize: 11, color: "var(--c-text-dim)" }}>• {s}</div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </Card>
+            </div>
+          )}
           {/* 籌碼面板 */}
-          <div style={{ breakInside: "avoid", marginBottom: 10 }}>
+          <div>
           <Card title="籌碼面板">
             {chip ? (() => {
               const { latest, margin } = chip;
@@ -1398,55 +1446,19 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
           </Card>
           </div>
 
-          {/* 主力意圖卡片 */}
-          {ind?.market_maker_intent && (
-            <div style={{ breakInside: "avoid", marginBottom: 10 }}>
-            <Card title="主力意圖">
-              {(() => {
-                const mmi = ind.market_maker_intent!;
-                const phaseColor: Record<string, string> = {
-                  "吸籌": "#00c076", "拉抬": "#ff4d4d", "出貨": "#f5a623",
-                  "打壓": "#3d7eff", "觀望": "var(--c-text-dim)",
-                };
-                const color = phaseColor[mmi.phase] ?? "var(--c-text-dim)";
-                const confPct = Math.round(mmi.confidence * 100);
-                return (
-                  <>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <span style={{
-                        fontSize: 15, fontWeight: 800, padding: "3px 12px", borderRadius: 5,
-                        background: "var(--c-bg-deep)", border: `1px solid ${color}66`, color,
-                      }}>{mmi.phase}</span>
-                      <span style={{ fontSize: 12, color: "var(--c-text-dim)" }}>信心度 {confPct}%</span>
-                    </div>
-                    <div style={{ height: 4, background: "var(--c-border)", borderRadius: 2, marginBottom: 8 }}>
-                      <div style={{ height: "100%", borderRadius: 2, background: color, width: `${confPct}%`, transition: "width 0.4s" }} />
-                    </div>
-                    {mmi.signals.length > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {mmi.signals.map((s, i) => (
-                          <div key={i} style={{ fontSize: 11, color: "var(--c-text-dim)" }}>• {s}</div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </Card>
-            </div>
-          )}
-
       </div>
-
       {/* ── AI 深度分析（評審團 + IC備忘錄）── */}
       {hasAi && (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
 
           {/* 評審團 */}
-          <Card title={`AI 評審團（${aiResult.panel_summary.bullish}多 ${aiResult.panel_summary.neutral}中 ${aiResult.panel_summary.bearish}空）`}>
+          <Card title={`AI 評審團（${aiResult.panel_summary?.bullish ?? 0}多 ${aiResult.panel_summary?.neutral ?? 0}中 ${aiResult.panel_summary?.bearish ?? 0}空）`}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {aiResult.panel.map(p => {
+              {(aiResult.panel ?? []).map(p => {
                 const vc = p.verdict === "看多" ? "#ff4d4d" : p.verdict === "看空" ? "#00c076" : "var(--c-text-dim)";
+                // LLM 產出的欄位不保證齊全（實測缺過 misses），一律給預設空陣列
+                const hits = p.hits ?? [];
+                const misses = p.misses ?? [];
                 return (
                   <div key={p.name} style={{ background: "var(--c-bg-main)", borderRadius: 6, padding: "8px 10px", border: `1px solid ${vc}22` }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
@@ -1457,14 +1469,14 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: "var(--c-text-dim)", lineHeight: 1.5 }}>{p.comment}</div>
-                    {p.hits.length > 0 && (
+                    {hits.length > 0 && (
                       <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        {p.hits.map((h, i) => <span key={i} style={{ fontSize: 10, color: "#ff4d4d", background: "#3d000022", padding: "1px 5px", borderRadius: 3 }}>✓ {h}</span>)}
+                        {hits.map((h, i) => <span key={i} style={{ fontSize: 10, color: "#ff4d4d", background: "#3d000022", padding: "1px 5px", borderRadius: 3 }}>✓ {h}</span>)}
                       </div>
                     )}
-                    {p.misses.length > 0 && (
+                    {misses.length > 0 && (
                       <div style={{ marginTop: 3, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        {p.misses.map((m, i) => <span key={i} style={{ fontSize: 10, color: "var(--c-text-dim)", background: "var(--c-border)", padding: "1px 5px", borderRadius: 3 }}>✗ {m}</span>)}
+                        {misses.map((m, i) => <span key={i} style={{ fontSize: 10, color: "var(--c-text-dim)", background: "var(--c-border)", padding: "1px 5px", borderRadius: 3 }}>✗ {m}</span>)}
                       </div>
                     )}
                   </div>
@@ -1533,7 +1545,7 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
           {QUICK_PICKS.filter(p => p.code !== symbol).map(p => (
             <button key={p.code} onClick={() => setSymbol(p.code)} style={{
               background: "var(--c-bg-main)", border: "1px solid var(--c-border)", borderRadius: 6,
-              padding: "8px 14px", cursor: "pointer", textAlign: "left",
+              padding: "8px 14px", cursor: "pointer", textAlign: "left", transition: "all 0.15s ease",
             }}>
               <div style={{ fontSize: 17, color: "#3d7eff", fontWeight: 600 }}>{p.code}</div>
               <div style={{ fontSize: 17, color: "var(--c-text-dim)" }}>{p.name}</div>
@@ -1542,7 +1554,6 @@ function StockPageInner({ initialSymbol }: { initialSymbol: string }) {
         </div>
       </Card>
       {showAtrModal && <AtrStopModal symbol={symbol} onClose={() => setShowAtrModal(false)} />}
-      {showTv && <TradingViewModal symbol={`TWSE:${symbol}`} title={symbol} theme={theme} onClose={() => setShowTv(false)} />}
     </div>
   );
 }

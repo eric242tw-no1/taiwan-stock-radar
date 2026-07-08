@@ -67,7 +67,7 @@ class CacheService:
 
         # L3 SQLite
         try:
-            _l3_set(key, val_json, _L3_TTL)
+            _l3_set(key, val_json, ttl or _L3_TTL)
         except Exception as e:
             logger.debug("CacheService L3 set failed (%s): %s", key, e)
 
@@ -75,9 +75,12 @@ class CacheService:
 # ── Redis helper ──────────────────────────────────────────────────────────────
 
 def _get_redis():
+    url = os.getenv("REDIS_URL", "")
+    if not url:
+        raise RuntimeError("REDIS_URL not set — L2 disabled")
     import redis
     return redis.Redis.from_url(
-        os.getenv("REDIS_URL", "redis://redis:6379/0"),
+        url,
         decode_responses=True,
         socket_connect_timeout=1,
     )

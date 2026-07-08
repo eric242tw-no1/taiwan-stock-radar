@@ -49,22 +49,6 @@ async def _run_backtest_task(result_id: str, body: BacktestRequest) -> None:
         _results[result_id] = {"status": "error", "error": str(e)}
 
 
-@router.post("/api/backtest/run", status_code=202)
-async def run_async(body: BacktestRequest):
-    """Enqueue backtest via Celery; returns task_id for polling via GET /api/tasks/{task_id}/status."""
-    from celery_tasks import run_backtest as _run_backtest_task
-    params = {
-        "symbol": body.symbol,
-        "start": body.start,
-        "end": body.end,
-        "strategy": body.strategy,
-        "initial_cash": body.initial_cash,
-        "params": body.params,
-    }
-    task = _run_backtest_task.delay(params)
-    return {"task_id": task.id, "status": "queued"}
-
-
 @router.get("/api/backtest/{result_id}")
 def get_result(result_id: str):
     """查詢回測結果（status: running | done | error）。"""

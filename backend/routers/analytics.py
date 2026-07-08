@@ -1,15 +1,43 @@
-"""Strategy Analytics API — reads from backtest_results."""
+"""Strategy Analytics API — reads/writes backtest_results."""
 import json
 import logging
 import math
 from typing import Optional
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from db import get_conn
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class BacktestResultIn(BaseModel):
+    symbol: str
+    period_start: str
+    period_end: str
+    win_rate: float       # 0~1
+    total_return: float   # 0~1（小數）
+    max_drawdown: float   # 0~1
+    trades: list[dict]    # 每筆需含 pnl（%），供 equity_curve 重建
+
+
+@router.post("/strategies")
+def save_strategy_result(body: BacktestResultIn):
+    """由回測頁儲存一筆回測結果，供策略分析頁比較。"""
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO backtest_results (symbol, period_start, period_end, win_rate, total_return, max_drawdown, trades) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (body.symbol, body.period_start, body.period_end,
+         body.win_rate, body.total_return, body.max_drawdown,
+         json.dumps(body.trades, ensure_ascii=False)),
+    )
+    conn.commit()
+    rid = cur.lastrowid
+    conn.close()
+    return {"id": rid, "status": "saved"}
 
 
 def _sharpe(total_return: float, max_drawdown: float, win_rate: float) -> float:

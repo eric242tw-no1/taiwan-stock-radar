@@ -39,7 +39,8 @@ const SORT_OPTIONS = [
 const WL_KEY  = "tw_radar_watchlist";
 const GRP_KEY = "tw_radar_wl_groups";
 
-interface WlGroup { id: string; name: string; stocks: { code: string; name: string; price: number; change_pct: number; industry: string }[] }
+// stocks 一律存代號字串（與 watchlist 頁共用 GRP_KEY，schema 必須一致）
+interface WlGroup { id: string; name: string; stocks: string[] }
 
 const DEFAULT_GROUPS: WlGroup[] = [
   { id:"g1", name:"群組1", stocks:[] },
@@ -54,7 +55,14 @@ function loadWL(): string[] {
 }
 
 function loadGroups(): WlGroup[] {
-  try { return JSON.parse(localStorage.getItem(GRP_KEY) || "null") || DEFAULT_GROUPS; } catch { return DEFAULT_GROUPS; }
+  try {
+    const parsed = JSON.parse(localStorage.getItem(GRP_KEY) || "null") || DEFAULT_GROUPS;
+    // 相容舊格式（曾存 {code,...} 物件陣列）：一律正規化成代號字串
+    return parsed.map((g: { id: string; name: string; stocks: (string | { code: string })[] }) => ({
+      ...g,
+      stocks: [...new Set(g.stocks.map(s => (typeof s === "string" ? s : s.code)))],
+    }));
+  } catch { return DEFAULT_GROUPS; }
 }
 
 function saveGroups(g: WlGroup[]) {
@@ -75,14 +83,8 @@ function GroupPickerModal({
   const addToGroup = (gId: string) => {
     const updated = groups.map(g => {
       if (g.id !== gId) return g;
-      if (g.stocks.some(s => s.code === stock.code)) return g;
-      return {
-        ...g,
-        stocks: [...g.stocks, {
-          code: stock.code, name: stock.name,
-          price: stock.price ?? 0, change_pct: stock.change_pct, industry: stock.industry,
-        }],
-      };
+      if (g.stocks.includes(stock.code)) return g;
+      return { ...g, stocks: [...g.stocks, stock.code] };
     });
     saveGroups(updated);
     onPicked(stock);
@@ -570,7 +572,12 @@ export default function ScreenerPage() {
                 {liveStocks.map(s => {
                   const up = s.change_pct >= 0;
                   return (
-                    <tr key={s.symbol} style={{ borderBottom:"1px solid #1a1a2a" }}>
+                    <tr key={s.symbol}
+                      onClick={() => router.push(`/stock?s=${s.symbol}`)}
+                      style={{ borderBottom:"1px solid #1a1a2a", cursor:"pointer" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--c-bg-deep)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                    >
                       <td style={{ padding:"5px 10px", textAlign:"right", color:"#3d7eff", fontWeight:700 }}>{s.symbol}</td>
                       <td style={{ padding:"5px 10px", textAlign:"right", color:"var(--c-text-mid)" }}>{s.name}</td>
                       <td style={{ padding:"5px 10px", textAlign:"right", color:"var(--c-text)" }}>{s.close.toLocaleString()}</td>

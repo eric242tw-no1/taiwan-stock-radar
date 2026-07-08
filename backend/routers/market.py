@@ -14,6 +14,7 @@ from services.gov_fund_fetcher import get_cached_gov_funds, fetch_gov_funds
 from services.fear_greed_fetcher import get_cached_fear_greed
 from services.buffett_fetcher import get_cached_buffett, fetch_buffett
 from services.cache import cache
+from services.stock_quote_fetcher import fetch_stock_quote
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -110,7 +111,7 @@ async def get_indicator(ticker: str):
     try:
         import yfinance as yf
         from services.candlestick import detect_from_ohlcv
-        df = yf.download(t, period="14d", interval="1d", progress=False, auto_adjust=True)
+        df = await asyncio.to_thread(yf.download, t, period="14d", interval="1d", progress=False, auto_adjust=True)
         if not df.empty:
             rows = df.tail(5).reset_index().to_dict("records")
             data["patterns"] = detect_from_ohlcv(rows)
@@ -124,7 +125,8 @@ async def get_indicator(ticker: str):
         from services.market_maker import detect_phase
         from services.finmind_fetcher import fetch_stock_chip
         symbol_raw = t.replace(".TW", "")
-        chip_data = fetch_stock_chip(symbol_raw).get("latest", {})
+        chip_raw = await asyncio.to_thread(fetch_stock_chip, symbol_raw)
+        chip_data = chip_raw.get("latest", {})
         data["market_maker_intent"] = detect_phase(chip_data, data)
     except Exception:
         data["market_maker_intent"] = {"phase": "觀望", "confidence": 0.0, "signals": []}
@@ -218,18 +220,27 @@ async def get_top_movers(limit: int = 5, codes: Optional[str] = Query(None)):
 
     results = []
     try:
-        tickers = yf.Tickers(" ".join(symbols))
+        tickers = await asyncio.to_thread(yf.Tickers, " ".join(symbols))
         for sym in symbols:
             try:
-                info = tickers.tickers[sym].fast_info
+                t = tickers.tickers[sym]
+                info = t.fast_info
                 price      = float(info.last_price or 0)
                 prev_close = float(info.previous_close or 0)
                 if prev_close > 0 and price > 0:
                     chg_pct = (price - prev_close) / prev_close * 100
                     code = sym.replace(".TW", "")
+                    # ponytail: fallback to TWSE MIS for name when STOCK_NAMES misses
+                    name = STOCK_NAMES.get(code)
+                    if not name:
+                        try:
+                            q = await asyncio.to_thread(fetch_stock_quote, code)
+                            name = q.get("name", "") or code
+                        except Exception:
+                            name = code
                     results.append({
                         "code":     code,
-                        "name":     STOCK_NAMES.get(code, code),
+                        "name":     name,
                         "price":    round(price, 2),
                         "chg_pct":  round(chg_pct, 2),
                     })
@@ -331,7 +342,7 @@ async def get_us_stocks():
 
     symbols = [t[0] for t in US_HEAT_TICKERS]
     try:
-        raw = yf.download(symbols, period="5d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
+        raw = await asyncio.to_thread(yf.download, symbols, period="5d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
         result = []
         for sym, label, full_name in US_HEAT_TICKERS:
             try:
@@ -495,14 +506,10 @@ async def get_correlation():
 @router.get("/sector-rotation")
 def get_sector_rotation():
     """產業輪動排行（composite_score = 0.5×mom4w + 0.3×mom8w + 0.2×mom13w），每週快取。"""
-    import json, os
-    import redis as redis_lib
-    from agents.sector_rotation_agent import REDIS_KEY
-    try:
-        r = redis_lib.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-        raw = r.get(REDIS_KEY)
-        if raw:
-            return json.loads(raw)
-    except Exception:
-        pass
+    import json
+    from agents.sector_rotation_agent import CACHE_KEY
+    from services.kv_store import kv_get
+    raw = kv_get(CACHE_KEY)
+    if raw:
+        return json.loads(raw)
     return {"computed_at": None, "sectors": [], "message": "No data yet — run sector rotation job first"}

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import sqlite3
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()  # 讀取 backend/.env
@@ -31,9 +30,12 @@ from services.tdcc_fetcher import ensure_table as ensure_tdcc_table, fetch_all_p
 from services.correlation_service import calculate_and_store as calc_correlation
 from agents.self_audit import SelfAudit
 from agents.alert_agent import run_check_alerts_sync
-from brokers.yuanta import YuantaBroker
-from brokers.sinopac import SinopacBroker
-from agents.stop_loss_guard import StopLossGuard
+from scheduler_tasks import (
+    _broker, _morning_brief_sync, _chip_and_anomaly_sync,
+    _scan_anomalies_sync, _factor_scan_and_batch_score,
+    _take_account_snapshot, _stop_loss_polling_sync, _run_daily_audit_sync,
+    _fetch_earnings_calendar_sync, _cleanup_notifications_sync,
+)
 
 
 def _init_db() -> None:
@@ -53,21 +55,6 @@ def _init_db() -> None:
 _self_audit = SelfAudit()
 
 
-def _create_broker():
-    broker_type = os.getenv("BROKER", "yuanta").lower()
-    if broker_type == "sinopac":
-        try:
-            return SinopacBroker()
-        except Exception as e:
-            logger.warning("SinopacBroker 初始化失敗，fallback 至 YuantaBroker: %s", e)
-    return YuantaBroker()
-
-
-# StopLossGuard 全域單例（broker 由 BROKER 環境變數決定）
-_broker = _create_broker()
-stop_loss_guard = StopLossGuard(_broker)
-
-
 def _tw_market_and_alerts() -> None:
     """每 10 秒：更新台股市場資料 + 警報條件檢查。"""
     fetch_tw_market()
@@ -79,137 +66,6 @@ def _tw_market_and_alerts() -> None:
     except Exception as exc:
         logger.warning("Alert check error: %s", exc)
 
-
-def _fetch_earnings_calendar_sync() -> None:
-    """08:00 每日：取得財報/除息/除權日曆。"""
-    from services.earnings_calendar import fetch_and_store_calendar
-    try:
-        fetch_and_store_calendar()
-    except Exception as exc:
-        logger.warning("earnings_calendar fetch error: %s", exc)
-
-
-def _cleanup_notifications_sync() -> None:
-    """每週日 02:00：清理舊通知，保留最近 1000 筆。"""
-    from db import get_conn
-    try:
-        conn = get_conn()
-        total = conn.execute("SELECT COUNT(*) FROM notifications").fetchone()[0]
-        if total > 1000:
-            conn.execute(
-                "DELETE FROM notifications WHERE id NOT IN "
-                "(SELECT id FROM notifications ORDER BY id DESC LIMIT 1000)"
-            )
-            conn.commit()
-            logger.info("notifications cleanup: removed %d rows", total - 1000)
-        conn.close()
-    except Exception as exc:
-        logger.warning("notifications cleanup error: %s", exc)
-
-
-def _morning_brief_sync() -> None:
-    """08:30 weekdays — generate morning brief via Claude API."""
-    import asyncio
-    from agents.morning_brief_agent import generate_morning_brief
-    asyncio.run(generate_morning_brief())
-
-
-def _chip_and_anomaly_sync() -> None:
-    """09:05 weekdays — fetch chip data then scan anomalies."""
-    import asyncio
-    from agents.market_anomaly_agent import scan_anomalies
-    try:
-        fetch_chip_summary()
-    except Exception as exc:
-        logger.warning("chip fetch at 09:05: %s", exc)
-    asyncio.run(scan_anomalies())
-
-
-def _scan_anomalies_sync() -> None:
-    """09:10–13:20 every 10 min weekdays — anomaly scan."""
-    import asyncio
-    from agents.market_anomaly_agent import scan_anomalies
-    asyncio.run(scan_anomalies())
-
-
-def _factor_scan_and_batch_score() -> None:
-    """13:35 weekdays — factor scan + AI batch scoring via Celery + account snapshot."""
-    from celery_tasks import score_symbol
-    from services.stock_pool_service import get_pool
-    try:
-        symbols = [s["symbol"] for s in get_pool()]
-        for sym in symbols:
-            score_symbol.delay(sym)
-        logger.info("factor_scan: enqueued %d symbols for AI scoring", len(symbols))
-    except Exception as exc:
-        logger.warning("factor_scan: %s", exc)
-    _take_account_snapshot()
-
-
-def _take_account_snapshot() -> None:
-    """13:35 每日帳戶快照 — 收盤後寫入 account_snapshots 表。"""
-    import asyncio
-    from datetime import date
-    from db import get_conn
-
-    async def _snapshot():
-        try:
-            balance = await _broker.get_balance()
-        except Exception as exc:
-            logger.warning("account snapshot: broker error — %s", exc)
-            return
-
-        total_value  = float(balance.get("total_value", 0) or 0)
-        cash         = float(balance.get("cash", 0) or 0)
-        daily_pnl    = float(balance.get("daily_pnl", 0) or 0)
-        margin_usage = float(balance.get("margin_usage", 0) or 0)
-
-        sql = """
-        INSERT INTO account_snapshots (date, total_value, cash, daily_pnl, margin_usage)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT (date) DO UPDATE SET
-            total_value=excluded.total_value, cash=excluded.cash,
-            daily_pnl=excluded.daily_pnl, margin_usage=excluded.margin_usage
-        """
-        try:
-            conn = get_conn()
-            conn.execute(sql, (str(date.today()), total_value, cash, daily_pnl, margin_usage))
-            conn.commit()
-            conn.close()
-            logger.info("account snapshot saved: total_value=%.0f", total_value)
-        except Exception as exc:
-            logger.error("account snapshot DB error: %s", exc)
-
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(_snapshot())
-        else:
-            asyncio.run(_snapshot())
-    except Exception:
-        asyncio.run(_snapshot())
-
-
-def _stop_loss_polling_sync() -> None:
-    """每分鐘：StopLossGuard Layer2 輪詢（同步包裝）。"""
-    import asyncio
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(stop_loss_guard.polling_monitor())
-        else:
-            asyncio.run(stop_loss_guard.polling_monitor())
-    except Exception:
-        asyncio.run(stop_loss_guard.polling_monitor())
-
-
-def _run_daily_audit_sync() -> None:
-    """15:30 weekdays：AI 自審計（同步包裝）。"""
-    from services.audit import run_daily_audit
-    try:
-        run_daily_audit()
-    except Exception as exc:
-        logger.warning("daily audit error: %s", exc)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -225,7 +81,8 @@ async def lifespan(app: FastAPI):
     load_cache_from_db()
 
     # warm up caches on startup
-    for fn, name in [(fetch_us_indices, "us_indices"), (fetch_tw_market, "tw_market"), (fetch_futures_and_fx, "futures_fx"), (fetch_chip_summary, "chip"), (fetch_sectors, "sectors"), (fetch_gov_funds, "gov_funds"), (fetch_buffett, "buffett")]:
+    # 財報日曆也在啟動時補抓：08:00 排程常因後端未開機而錯過（服務內建 23h TTL，重複呼叫無成本）
+    for fn, name in [(fetch_us_indices, "us_indices"), (fetch_tw_market, "tw_market"), (fetch_futures_and_fx, "futures_fx"), (fetch_chip_summary, "chip"), (fetch_sectors, "sectors"), (fetch_gov_funds, "gov_funds"), (fetch_buffett, "buffett"), (_fetch_earnings_calendar_sync, "earnings_calendar")]:
         try:
             fn()
         except Exception as exc:
@@ -235,7 +92,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(fetch_us_indices, "interval", minutes=5, id="us_indices_refresh")
     # TW market: every 10 seconds + alert check
     scheduler.add_job(
-        _tw_market_and_alerts, "interval", seconds=10, id="tw_market_refresh",
+        _tw_market_and_alerts, "interval", seconds=30, id="tw_market_refresh",
     )
     scheduler.add_job(
         fetch_futures_and_fx, "interval", minutes=1, id="futures_fx_refresh",

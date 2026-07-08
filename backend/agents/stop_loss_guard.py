@@ -34,14 +34,13 @@ class StopLossGuard:
         from utils.telegram import send_message
 
         try:
-            stop_order = await self.broker.place_order(
+            await self.broker.place_order(
                 symbol=symbol,
                 action="sell",
                 order_type="stop",
                 quantity=quantity,
                 stop_price=stop_price,
             )
-            await _save_stop_order(symbol, stop_order["order_id"], stop_price)
             logger.info("StopLossGuard Layer1 OK: %s stop@%.2f", symbol, stop_price)
             return True
         except Exception as e:
@@ -134,31 +133,6 @@ class StopLossGuard:
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
-
-async def _save_stop_order(symbol: str, order_id: str, stop_price: float):
-    """記錄停損委託到 DB（非同步，失敗不影響主流程）"""
-    import asyncio
-    import sqlite3
-    import os
-
-    db_path = os.path.join(os.path.dirname(__file__), "..", "cache.db")
-
-    def _write():
-        con = sqlite3.connect(db_path)
-        con.execute(
-            "CREATE TABLE IF NOT EXISTS stop_orders "
-            "(symbol TEXT, order_id TEXT, stop_price REAL, created_at TEXT)"
-        )
-        con.execute(
-            "INSERT INTO stop_orders VALUES (?,?,?,datetime('now'))",
-            (symbol, order_id, stop_price),
-        )
-        con.commit()
-        con.close()
-
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _write)
-
 
 async def _get_realtime_price(symbol: str) -> float | None:
     """取得即時報價（使用現有 stock_quote_fetcher，包在 executor 裡）"""

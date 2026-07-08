@@ -1,18 +1,20 @@
-"""Task status API — GET /api/tasks/{task_id}/status"""
-from fastapi import APIRouter, HTTPException
-from celery.result import AsyncResult
+"""任務監控 API — 列出 APScheduler 排程任務（取代已移除的 Celery/Flower）。"""
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
-@router.get("/{task_id}/status")
-def get_task_status(task_id: str):
-    """Query Celery task status by task_id."""
-    from celery_app import app as celery_app
-    result = AsyncResult(task_id, app=celery_app)
-    response: dict = {"task_id": task_id, "status": result.state}
-    if result.state == "SUCCESS":
-        response["result"] = result.result
-    elif result.state == "FAILURE":
-        response["error"] = str(result.info)
-    return response
+@router.get("/jobs")
+def list_jobs():
+    """回傳所有排程任務的 id、觸發規則與下次執行時間。"""
+    from main import scheduler
+
+    jobs = []
+    for j in scheduler.get_jobs():
+        jobs.append({
+            "id": j.id,
+            "trigger": str(j.trigger),
+            "next_run": j.next_run_time.strftime("%Y-%m-%d %H:%M:%S") if j.next_run_time else None,
+        })
+    jobs.sort(key=lambda x: x["next_run"] or "9999")
+    return {"count": len(jobs), "running": scheduler.running, "jobs": jobs}

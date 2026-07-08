@@ -39,10 +39,10 @@ def client(monkeypatch):
     monkeypatch.setattr("routers.webhook._update_tv_signal", lambda *a, **kw: None)
     monkeypatch.setattr("routers.webhook._insert_order", lambda *a, **kw: None)
 
-    # Stub Redis (no dedup)
+    # Stub dedup (no dedup)
     monkeypatch.setattr("routers.webhook._is_duplicate", lambda key: False)
 
-    # Stub broker
+    # Stub broker（webhook 於 handler 內 `from scheduler_tasks import _broker`，需 patch scheduler_tasks）
     import asyncio
 
     async def _fake_get_position(symbol):
@@ -52,10 +52,21 @@ def client(monkeypatch):
         return {"order_id": "FAKE-001"}
 
     class FakeBroker:
-        get_position = _fake_get_position
-        place_order = _fake_place_order
+        get_position = staticmethod(_fake_get_position)
+        place_order = staticmethod(_fake_place_order)
 
-    monkeypatch.setattr("routers.webhook._broker", FakeBroker(), raising=False)
+    monkeypatch.setattr("scheduler_tasks._broker", FakeBroker(), raising=False)
+
+    # Stub Telegram 下單確認（立即視為已確認，跳過 60 秒等待）
+    _confirmed = asyncio.Event()
+    _confirmed.set()
+    monkeypatch.setattr("utils.telegram_bot.register_pending", lambda sid: _confirmed)
+    monkeypatch.setattr("utils.telegram_bot.is_confirmed", lambda sid: True)
+
+    async def _noop_confirm(**kw):
+        pass
+
+    monkeypatch.setattr("utils.telegram.send_order_confirm", _noop_confirm)
 
     # Stub AI
     async def _fake_devil_advocate(*a, **kw):
@@ -89,13 +100,15 @@ def test_successful_flow(client, monkeypatch):
     async def _approved(*a, **kw):
         return {"confidence": 0.9, "approved": True, "reason": "OK"}
 
-    import routers.webhook as wh
-    monkeypatch.setattr(wh, "devil_advocate", _approved)
+    monkeypatch.setattr("agents.ai_engine.devil_advocate", _approved)
 
     async def _get_pos(symbol): return 0
-    monkeypatch.setattr(wh, "_broker", type("B", (), {
+
+    async def _place(**kw): return {"order_id": "X1"}
+
+    monkeypatch.setattr("main._broker", type("B", (), {
         "get_position": staticmethod(_get_pos),
-        "place_order": staticmethod(lambda **kw: asyncio.coroutine(lambda: {"order_id": "X1"})()),
+        "place_order": staticmethod(_place),
     })())
 
     r = client.post("/api/webhook/tradingview", json=PAYLOAD)
@@ -107,14 +120,12 @@ def test_successful_flow(client, monkeypatch):
 
 
 def test_ai_rejection(client, monkeypatch):
-    import routers.webhook as wh
-
     async def _rejected(*a, **kw):
         return {"confidence": 0.3, "approved": False, "reason": "風險過高"}
 
     async def _get_pos(symbol): return 0
-    monkeypatch.setattr(wh, "devil_advocate", _rejected)
-    monkeypatch.setattr(wh, "_broker", type("B", (), {"get_position": staticmethod(_get_pos)})())
+    monkeypatch.setattr("agents.ai_engine.devil_advocate", _rejected)
+    monkeypatch.setattr("main._broker", type("B", (), {"get_position": staticmethod(_get_pos)})())
 
     r = client.post("/api/webhook/tradingview", json=PAYLOAD)
     assert r.status_code == 200
@@ -122,10 +133,8 @@ def test_ai_rejection(client, monkeypatch):
 
 
 def test_no_change_when_diff_zero(client, monkeypatch):
-    import routers.webhook as wh
-
     async def _same_pos(symbol): return PAYLOAD["target_position"]
-    monkeypatch.setattr(wh, "_broker", type("B", (), {"get_position": staticmethod(_same_pos)})())
+    monkeypatch.setattr("main._broker", type("B", (), {"get_position": staticmethod(_same_pos)})())
 
     r = client.post("/api/webhook/tradingview", json=PAYLOAD)
     assert r.status_code == 200

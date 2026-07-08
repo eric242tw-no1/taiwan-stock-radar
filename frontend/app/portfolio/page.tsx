@@ -364,6 +364,21 @@ export default function PortfolioPage() {
   const totalPnL  = totalVal - totalCost;
   const totalPct  = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
 
+  // ponytail: input code → auto-fill name
+  useEffect(() => {
+    if (!/^\d{4}$/.test(form.code)) return;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/api/market/batch-quotes?codes=${form.code}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        const q = d.quotes?.[form.code];
+        if (q?.name) setForm(prev => prev.code === form.code && !prev.name ? { ...prev, name: q.name } : prev);
+      } catch { /* ignore */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [form.code]);
+
   const submitForm = async () => {
     if (!form.code || !form.qty || !form.cost) return;
     setSaving(true);
@@ -473,18 +488,19 @@ export default function PortfolioPage() {
               <div style={{ fontSize:14, fontWeight:700, color:"#3d7eff", marginBottom:12 }}>{editId ? "✏️ 編輯持倉" : "➕ 新增持倉"}</div>
               <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "120px 160px 80px 100px 140px 1fr", gap:10, alignItems:"end" }}>
                 {[
-                  { key:"code",     label:"股票代號",    ph:"2330" },
-                  { key:"name",     label:"名稱（選填）", ph:"台積電" },
-                  { key:"qty",      label:"張數",        ph:"1" },
-                  { key:"cost",     label:"成本價",       ph:"1000" },
-                  { key:"buy_date", label:"買入日期",     ph:"2026-01-01" },
-                  { key:"note",     label:"備註",         ph:"進場原因" },
+                  { key:"code",     label:"股票代號",    ph:"2330",      type:"text" },
+                  { key:"name",     label:"名稱（選填）", ph:"台積電",    type:"text" },
+                  { key:"qty",      label:"張數",        ph:"1",         type:"number" },
+                  { key:"cost",     label:"成本價",       ph:"1000",      type:"number" },
+                  { key:"buy_date", label:"買入日期",     ph:"2026-01-01",type:"text" },
+                  { key:"note",     label:"備註",         ph:"進場原因",  type:"text" },
                 ].map(f => (
                   <div key={f.key} style={{ display:"flex", flexDirection:"column", gap:4 }}>
                     <label style={{ fontSize:11, color:"var(--c-text-dim)" }}>{f.label}</label>
-                    <input value={form[f.key as keyof typeof form]}
+                    <input type={f.type} value={form[f.key as keyof typeof form]}
                       onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                       placeholder={f.ph}
+                      min={f.type === "number" ? 0 : undefined}
                       style={{ background:"var(--c-bg-deep)", border:"1px solid var(--c-border)", borderRadius:6, color:"var(--c-text)", fontSize:14, padding:"6px 10px", outline:"none" }} />
                   </div>
                 ))}
@@ -510,7 +526,10 @@ export default function PortfolioPage() {
               {holdings.map(p => {
                 const { diff, pct } = pnl(p);
                 return (
-                  <div key={p.id} style={{ background:"var(--c-bg-card)", border:"1px solid var(--c-border)", borderRadius:10, padding:"14px 16px" }}>
+                  <div key={p.id} style={{ background:"var(--c-bg-card)", border:"1px solid var(--c-border)", borderRadius:10, padding:"14px 16px", boxShadow:"0 1px 3px rgba(0,0,0,0.2)", transition:"box-shadow 0.15s ease" }}
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.3)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.2)"; }}>
+                    <div style={{ height:3, borderRadius:"3px 3px 0 0", background:diff>=0?TW_COLORS.up:TW_COLORS.down, margin:"-14px -16px 10px" }} />
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
                       <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                         <div style={{ display:"flex", gap:8, alignItems:"baseline" }}>
@@ -527,7 +546,7 @@ export default function PortfolioPage() {
                             {p.qty}張 × 成本 <span style={{ color:"var(--c-text)" }}>{p.cost.toLocaleString()}</span>
                           </span>
                           <span style={{ fontSize:13, color:"var(--c-text-dim)" }}>
-                            現價 <span style={{ color:"var(--c-text)", fontWeight:600 }}>{p.current ? p.current.toLocaleString() : "---"}</span>
+                            現價 <span style={{ color:"var(--c-text)", fontWeight:700 }}>{p.current ? p.current.toLocaleString() : "---"}</span>
                           </span>
                           {p.buy_date && <span style={{ fontSize:12, color:"var(--c-text-dim)" }}>買入 {p.buy_date}</span>}
                         </div>

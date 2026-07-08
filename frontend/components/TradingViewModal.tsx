@@ -29,24 +29,26 @@ export function TradingViewModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // 在系統瀏覽器開啟：Tauri 用 opener plugin（WebView 擋 target=_blank），
-  // 一般瀏覽器 fallback window.open
-  const openInBrowser = async () => {
-    try {
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(tvFullUrl);
-    } catch {
-      window.open(tvFullUrl, "_blank", "noopener");
-    }
+  const openInBrowser = () => openTvInBrowser(symbol);
+
+  // 官方 embed-widget 格式：設定（含 symbol）必須放在 URL hash 的 JSON 裡，
+  // 舊版 widgetembed 的 query 參數 symbol 會被忽略而永遠顯示預設商品（S&P 500）
+  const cfg = {
+    autosize: true,
+    symbol,
+    interval: "D",
+    timezone: "Asia/Taipei",
+    theme,
+    style: "1",
+    locale: "zh_TW",
+    allow_symbol_change: true,
+    withdateranges: true,
+    hide_side_toolbar: false,
   };
-
   const src =
-    `https://s.tradingview.com/widgetembed/?frameElementId=tv_chart` +
-    `&symbol=${encodeURIComponent(symbol)}` +
-    `&interval=D&theme=${theme}&style=1&locale=zh_TW` +
-    `&hide_side_toolbar=0&allow_symbol_change=1&withdateranges=1`;
+    `https://www.tradingview-widget.com/embed-widget/advanced-chart/?locale=zh_TW` +
+    `#${encodeURIComponent(JSON.stringify(cfg))}`;
 
-  const tvFullUrl = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
 
   return (
     <div onClick={onClose} style={{
@@ -85,4 +87,20 @@ export function toTvSymbol(opts: { code: string; market?: "tw" | "us" | "crypto"
   if (market === "crypto") return `BINANCE:${code.replace("USD", "")}USD`;
   if (market === "us") return code;            // TradingView 可解析裸美股代號
   return `TWSE:${code}`;                        // 台股
+}
+
+/**
+ * 用系統瀏覽器開 TradingView 完整版線圖。
+ * 台股（TWSE:*）必須走這條：TWSE 資料不授權給嵌入式 widget，
+ * iframe 內只會顯示「此商品僅在TradingView上可用」（實測 2026-07-04）。
+ * Tauri 用 opener plugin（WebView 擋 target=_blank），一般瀏覽器 fallback window.open。
+ */
+export async function openTvInBrowser(symbol: string) {
+  const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}&locale=zh_TW`;
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
 }

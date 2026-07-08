@@ -10,9 +10,8 @@ from __future__ import annotations
 
 def detect_phase(chip: dict, indicators: dict) -> dict:
     """
-    chip 鍵（參考 finmind_fetcher）：
-      foreign_net, investment_net, dealer_net,
-      volume_ratio（可選）, tdcc_concentration（可選）
+    chip 鍵（finmind_fetcher _aggregate 輸出）：
+      foreign, trust, dealer, date
 
     indicators 鍵（參考 indicator_service）：
       close, ma20, rsi14, macd_hist, k, d, volume, atr14
@@ -20,8 +19,8 @@ def detect_phase(chip: dict, indicators: dict) -> dict:
     signals: list[str] = []
     scores: dict[str, float] = {"吸籌": 0.0, "拉抬": 0.0, "出貨": 0.0, "打壓": 0.0}
 
-    foreign_net    = float(chip.get("foreign_net") or chip.get("foreign_buy") or 0)
-    invest_net     = float(chip.get("investment_net") or chip.get("investment_buy") or 0)
+    foreign_net    = float(chip.get("foreign") or 0)
+    invest_net     = float(chip.get("trust") or 0)
     volume_ratio   = float(chip.get("volume_ratio") or indicators.get("volume_ratio") or 1.0)
     tdcc_trend     = chip.get("tdcc_trend", 0)   # +1 集中度上升 / -1 下降 / 0 持平
 

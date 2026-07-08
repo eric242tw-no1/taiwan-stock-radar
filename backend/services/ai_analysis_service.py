@@ -2,7 +2,7 @@
 AI 個股分析服務
 支援多 provider：Anthropic Claude / DeepSeek / Google Gemini
 環境變數優先順序：ANTHROPIC_API_KEY → DEEPSEEK_API_KEY → GEMINI_API_KEY
-結果快取到 Redis（TTL 至隔日 09:00）+ PostgreSQL daily_ai_report 表
+結果快取到 SQLite cache 表（TTL 至隔日 09:00）+ analysis_history 表
 """
 
 import json
@@ -10,25 +10,14 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 
-import redis
-
 from db import get_conn
+from services.kv_store import kv_get, kv_set
 
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 DEEPSEEK_API_KEY  = os.getenv("DEEPSEEK_API_KEY", "")
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
-REDIS_URL         = os.getenv("REDIS_URL", "redis://redis:6379")
-
-_redis_client: redis.Redis | None = None
-
-
-def _get_redis() -> redis.Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    return _redis_client
 
 
 def _ttl_until_tomorrow_9am() -> int:
@@ -42,27 +31,21 @@ def _cache_key(symbol: str, trade_date: str) -> str:
     return f"ai:score:{symbol}:{trade_date}"
 
 
-def _load_from_redis(symbol: str, trade_date: str) -> dict | None:
-    try:
-        raw = _get_redis().get(_cache_key(symbol, trade_date))
-        if raw:
-            data = json.loads(raw)
-            data["cached"] = True
-            return data
-    except Exception as e:
-        logger.warning("Redis read failed: %s", e)
+def _load_from_cache(symbol: str, trade_date: str) -> dict | None:
+    raw = kv_get(_cache_key(symbol, trade_date))
+    if raw:
+        data = json.loads(raw)
+        data["cached"] = True
+        return data
     return None
 
 
-def _save_to_redis(symbol: str, trade_date: str, data: dict):
-    try:
-        _get_redis().setex(
-            _cache_key(symbol, trade_date),
-            _ttl_until_tomorrow_9am(),
-            json.dumps(data, ensure_ascii=False),
-        )
-    except Exception as e:
-        logger.warning("Redis write failed: %s", e)
+def _save_to_cache(symbol: str, trade_date: str, data: dict):
+    kv_set(
+        _cache_key(symbol, trade_date),
+        json.dumps(data, ensure_ascii=False),
+        _ttl_until_tomorrow_9am(),
+    )
 
 
 def _save_to_db(symbol: str, trade_date: str, data: dict):
@@ -136,7 +119,7 @@ def _parse_response(raw: str) -> dict:
 
 def _call_anthropic(prompt: str) -> dict:
     import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=30.0, max_retries=2)
     msg = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=600,
@@ -147,7 +130,7 @@ def _call_anthropic(prompt: str) -> dict:
 
 def _call_deepseek(prompt: str) -> dict:
     from openai import OpenAI
-    client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+    client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com", timeout=30.0, max_retries=2)
     resp = client.chat.completions.create(
         model="deepseek-chat",
         max_tokens=600,
@@ -183,13 +166,13 @@ def _call_llm(symbol: str, ind: dict, chip: dict | None, quote: dict | None) -> 
 def get_ai_analysis(symbol: str, ind: dict | None, chip: dict | None, quote: dict | None) -> dict:
     """
     Main entry: return AI analysis dict.
-    1. Redis cache hit → return immediately
+    1. Cache hit → return immediately
     2. Any AI key available → call LLM, cache, persist
     3. No key → return {} (caller returns source=rule_based)
     """
     trade_date = date.today().isoformat()
 
-    cached = _load_from_redis(symbol, trade_date)
+    cached = _load_from_cache(symbol, trade_date)
     if cached:
         return cached
 
@@ -205,7 +188,7 @@ def get_ai_analysis(symbol: str, ind: dict | None, chip: dict | None, quote: dic
         result = _call_llm(symbol, ind or {}, chip, quote)
         result["source"] = "claude"  # frontend 用這個判斷顯示 "AI 分析" 標籤
         result["cached"] = False
-        _save_to_redis(symbol, trade_date, result)
+        _save_to_cache(symbol, trade_date, result)
         _save_to_db(symbol, trade_date, result)
         return result
     except Exception as e:

@@ -1,20 +1,19 @@
 """
 PTT Stock 板情緒爬蟲
 爬取最新貼文標題，找出含特定股票代號的貼文，以關鍵字規則判斷看漲/看跌情緒
-快取於 Redis（TTL 30 分鐘）
+快取於 SQLite cache 表（TTL 30 分鐘）
 """
 
 import logging
-import os
 import time
 from datetime import datetime, timezone
 
 import httpx
-import redis
+
+from services.kv_store import kv_get, kv_set
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 CACHE_TTL = 1800  # 30 分鐘
 
 BULLISH_KEYWORDS = [
@@ -41,16 +40,6 @@ BEARISH_KEYWORDS = [
     "暴跌", "重挫", "殺盤", "賣壓", "認賠", "逃命", "領跌",
     "目標價調降", "降評", "轉弱", "走弱", "雪崩", "血流成河",
 ]
-
-_redis_client: redis.Redis | None = None
-
-
-def _get_redis() -> redis.Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    return _redis_client
-
 
 def _score_text(text: str) -> str:
     bull = sum(1 for kw in BULLISH_KEYWORDS if kw in text)
@@ -182,17 +171,13 @@ def get_ptt_sentiment(symbol: str, name: str | None = None) -> dict:
     """
     取得指定股票代號的 PTT Stock 板情緒分析。
     name 為公司名稱（如「台積電」），一併搜尋以提升命中率。
-    優先從 Redis 快取讀取，cache miss 才爬取。
+    優先從快取讀取，cache miss 才爬取。
     """
     cache_key = f"ptt_sentiment:{symbol}"
-    try:
-        r = _get_redis()
-        cached = r.get(cache_key)
-        if cached:
-            import json
-            return json.loads(cached)
-    except Exception:
-        pass
+    cached = kv_get(cache_key)
+    if cached:
+        import json
+        return json.loads(cached)
 
     # 用 PTT 站內搜尋（公司名命中率最高；無名稱時用代號）
     query = name or symbol
@@ -246,10 +231,7 @@ def get_ptt_sentiment(symbol: str, name: str | None = None) -> dict:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    try:
-        import json
-        _get_redis().setex(cache_key, CACHE_TTL, json.dumps(result, ensure_ascii=False))
-    except Exception:
-        pass
+    import json
+    kv_set(cache_key, json.dumps(result, ensure_ascii=False), CACHE_TTL)
 
     return result

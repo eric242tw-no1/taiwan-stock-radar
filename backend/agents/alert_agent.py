@@ -202,7 +202,7 @@ async def _get_metric(symbol: str, metric: str) -> Optional[float]:
     # 其他指標從後端即時資料讀
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(f"http://127.0.0.1:8000/api/stock/{symbol}")
+            r = await client.get(f"http://127.0.0.1:8000/api/stock/{symbol}/quote")
         if r.status_code != 200:
             return None
         data = r.json()

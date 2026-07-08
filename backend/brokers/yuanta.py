@@ -18,7 +18,6 @@ import os
 import platform
 import sys
 import uuid
-from collections import deque
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -93,73 +92,6 @@ def _load_dll(dll_dir: str) -> bool:
         return False
 
 
-# ── Rate limiter ───────────────────────────────────────────────────────────────
-
-class _RateLimiter:
-    """滑動視窗速率限制，同時限制每秒與每分鐘上限。
-
-    超過每分鐘限制會 sleep 至視窗重置；連續觸發達 suspension_threshold 次
-    後額外等待 60 秒（模擬元大伺服器暫停行為，避免帳號被停用）。
-    """
-
-    def __init__(
-        self,
-        per_second: int,
-        per_minute: int,
-        suspension_threshold: int = 8,
-    ) -> None:
-        self._per_sec = per_second
-        self._per_min = per_minute
-        self._threshold = suspension_threshold
-        self._sec_times: deque[float] = deque()
-        self._min_times: deque[float] = deque()
-        self._suspension_count = 0
-        self._lock = Lock()
-
-    def acquire(self) -> None:
-        import time
-
-        with self._lock:
-            now = time.monotonic()
-
-            # 清理過期時間戳
-            while self._sec_times and now - self._sec_times[0] >= 1.0:
-                self._sec_times.popleft()
-            while self._min_times and now - self._min_times[0] >= 60.0:
-                self._min_times.popleft()
-
-            # 每秒限制
-            if len(self._sec_times) >= self._per_sec:
-                wait = 1.0 - (now - self._sec_times[0])
-                if wait > 0:
-                    time.sleep(wait)
-                now = time.monotonic()
-                while self._sec_times and now - self._sec_times[0] >= 1.0:
-                    self._sec_times.popleft()
-
-            # 每分鐘限制
-            if len(self._min_times) >= self._per_min:
-                self._suspension_count += 1
-                if self._suspension_count >= self._threshold:
-                    logger.warning(
-                        "速率限制：已觸發 %d 次，等待 60 秒防止帳號停用",
-                        self._suspension_count,
-                    )
-                    time.sleep(60)
-                    self._suspension_count = 0
-                else:
-                    wait = 60.0 - (now - self._min_times[0])
-                    if wait > 0:
-                        time.sleep(wait)
-                now = time.monotonic()
-                while self._min_times and now - self._min_times[0] >= 60.0:
-                    self._min_times.popleft()
-
-            ts = time.monotonic()
-            self._sec_times.append(ts)
-            self._min_times.append(ts)
-
-
 # ── Login status codes ────────────────────────────────────────────────────────
 
 _LOGIN_CODES: dict[str, str] = {
@@ -205,14 +137,6 @@ class YuantaBroker(BrokerBase):
         # key = strIndex（如 "SubscribeWatchlistAll", "RR_RealReport"）
         self._sub_handlers: dict[str, list[Callable[[Any], None]]] = {}
         self._sub_lock = Lock()
-
-        # 速率限制（per_second, per_minute）
-        # 帳務/查詢：3/s, 600/min
-        self._query_rl = _RateLimiter(per_second=3, per_minute=600)
-        # 下單：10/s, 3000/min
-        self._trade_rl = _RateLimiter(per_second=10, per_minute=3000)
-        # 訂閱：10/s, 1200/min
-        self._sub_rl = _RateLimiter(per_second=10, per_minute=1200)
 
     # ── 初始化 ──────────────────────────────────────────────────────────────────
 
@@ -350,11 +274,9 @@ class YuantaBroker(BrokerBase):
         self,
         key: str,
         fn: Callable,
-        rl: _RateLimiter,
         timeout: float = 10.0,
     ) -> Any:
         """執行一次性查詢，等待 intMark=1 回應。"""
-        rl.acquire()
         fut = self._make_future(key)
         fn()
         return await asyncio.wait_for(fut, timeout=timeout)
@@ -366,7 +288,6 @@ class YuantaBroker(BrokerBase):
         subscribe_fn: Callable,
     ) -> None:
         """註冊持續訂閱 handler 並送出訂閱請求。"""
-        self._sub_rl.acquire()
         with self._sub_lock:
             self._sub_handlers.setdefault(str_index, []).append(handler)
         subscribe_fn()
@@ -400,7 +321,6 @@ class YuantaBroker(BrokerBase):
         result = await self._query(
             "GetWatchListAll",
             lambda: self._api.GetWatchListAll(self.account, lst),
-            self._query_rl,
         )
         return self._parse_quote(result, symbol)
 
@@ -433,7 +353,6 @@ class YuantaBroker(BrokerBase):
         result = await self._query(
             "GetStoreSummary",
             lambda: self._api.GetStoreSummary(self.account),
-            self._query_rl,
         )
         return self._parse_positions(result)
 
@@ -470,7 +389,6 @@ class YuantaBroker(BrokerBase):
         result = await self._query(
             "GetBankBalance",
             lambda: self._api.GetBankBalance(self.account),
-            self._query_rl,
         )
         try:
             return {"available": float(result.Balance)}
@@ -484,7 +402,6 @@ class YuantaBroker(BrokerBase):
         result = await self._query(
             "GetRealReport",
             lambda: self._api.GetRealReport(self.account),
-            self._query_rl,
         )
         orders = []
         try:
@@ -552,7 +469,6 @@ class YuantaBroker(BrokerBase):
         result = await self._query(
             "SendStockOrder",
             lambda: self._api.SendStockOrder(self.account, lst),
-            self._trade_rl,
         )
         return self._parse_order_result(result, symbol, quantity, price)
 

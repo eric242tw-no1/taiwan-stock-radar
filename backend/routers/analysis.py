@@ -284,7 +284,7 @@ def _ic_row_to_response(row: dict) -> dict:
 
 async def _generate_ic_memo(symbol: str) -> dict:
     from openai import AsyncOpenAI as _AsyncOpenAI
-    client = _AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com")
+    client = _AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com", timeout=30.0, max_retries=2)
 
     # 取得當前價格（盡力）
     current_price = None
@@ -362,20 +362,18 @@ async def run_debate(symbol: str, body: DebateRequest | None = None):
     extra_context = (body.context if body else "") or ""
 
     from openai import AsyncOpenAI as _AsyncOpenAI
-    client = _AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com")
+    client = _AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com", timeout=30.0, max_retries=2)
 
     # 取得基本資料
     price_ctx = _get_price_context(symbol)
 
     def _new_client():
         from openai import AsyncOpenAI as _C
-        return _C(api_key=os.getenv("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com")
+        return _C(api_key=os.getenv("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com", timeout=30.0, max_retries=2)
 
-    # Bull + Bear 並行執行（各用獨立 client 避免並發連線衝突）
-    bull_args, bear_args = await asyncio.gather(
-        _run_bull_agent(_new_client(), symbol, price_ctx, extra_context),
-        _run_bear_agent(_new_client(), symbol, price_ctx, [], extra_context),
-    )
+    # Bull → Bear 循序執行（bear 拿到 bull 論點逐一反駁，才是真辯論）
+    bull_args = await _run_bull_agent(_new_client(), symbol, price_ctx, extra_context)
+    bear_args = await _run_bear_agent(_new_client(), symbol, price_ctx, bull_args, extra_context)
 
     # Arbiter 裁決
     arbiter = await _run_arbiter(client, symbol, bull_args, bear_args)
@@ -430,12 +428,18 @@ async def _run_bull_agent(client, symbol: str, price_ctx: str, extra: str) -> li
 
 
 async def _run_bear_agent(client, symbol: str, price_ctx: str, bull_args: list, extra: str) -> list[dict]:
-    prompt = (
-        f"你是空方（Bear）分析師，為台股 {symbol} {price_ctx} 提出 3 個最有力的看空論點。\n"
-        f"{f'補充資訊：{extra}' if extra else ''}\n\n"
-        f"每個論點格式：{{\"title\": \"<標題>\", \"argument\": \"<詳細說明，至少2句>\", \"evidence\": \"<具體數據或事實>\"}}\n"
-        f"回傳 JSON 陣列：[論點1, 論點2, 論點3]"
-    )
+    lines = [
+        f"你是空方（Bear）分析師，為台股 {symbol} {price_ctx} 提出 3 個最有力的看空論點。",
+    ]
+    if extra:
+        lines.append(f"補充資訊：{extra}")
+    if bull_args:
+        lines.append(f"多方論點（請逐一反駁）：{json.dumps(bull_args, ensure_ascii=False)}")
+    lines.extend([
+        '每個論點格式：{"title": "<標題>", "argument": "<詳細說明，至少2句>", "evidence": "<具體數據或事實>"}',
+        "回傳 JSON 陣列：[論點1, 論點2, 論點3]",
+    ])
+    prompt = "\n".join(lines)
     return await _parse_arguments(client, prompt)
 
 

@@ -1,6 +1,6 @@
 """
 AI 決策引擎
-流程：build_ai_context() → Claude API → Redis 快取 → 回傳結構化結果
+流程：build_ai_context() → Claude API → 快取（記憶體 + SQLite）→ 回傳結構化結果
 快取 TTL：到隔日 09:00
 """
 import os
@@ -20,19 +20,11 @@ LOCAL_BASE_URL    = os.getenv("LOCAL_AI_BASE_URL", "http://127.0.0.1:3001/v1")
 LOCAL_MODEL       = os.getenv("LOCAL_AI_MODEL", "auto")
 LOCAL_API_KEY     = os.getenv("LOCAL_AI_API_KEY", "not-needed")
 FINMIND_TOKEN     = os.getenv("FINMIND_TOKEN", "")
-REDIS_URL         = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 _FINMIND = "https://api.finmindtrade.com/api/v4/data"
 _TW = timezone(timedelta(hours=8))
 
-# Redis 可選（無 Redis 時降級為 in-memory）
-try:
-    import redis.asyncio as aioredis
-    _redis: aioredis.Redis | None = aioredis.from_url(REDIS_URL, decode_responses=True)
-except Exception:
-    _redis = None
-
-_mem_cache: dict[str, str] = {}   # 降級快取
+_mem_cache: dict[str, str] = {}   # L1 行程內快取（key 含日期，不需 TTL）
 
 # ── System Prompt ────────────────────────────────────────
 
@@ -251,7 +243,7 @@ async def call_claude(context: dict) -> dict:
 
 async def _call_deepseek(user_msg: str) -> str:
     import openai
-    client = openai.AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+    client = openai.AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com", timeout=60.0, max_retries=2)
     resp = await client.chat.completions.create(
         model="deepseek-chat",
         max_tokens=4096,
@@ -265,7 +257,7 @@ async def _call_deepseek(user_msg: str) -> str:
 
 async def _call_local(user_msg: str) -> str:
     import openai
-    client = openai.AsyncOpenAI(api_key=LOCAL_API_KEY, base_url=LOCAL_BASE_URL)
+    client = openai.AsyncOpenAI(api_key=LOCAL_API_KEY, base_url=LOCAL_BASE_URL, timeout=30.0, max_retries=1)
     msg = await client.chat.completions.create(
         model=LOCAL_MODEL,
         max_tokens=4096,
@@ -349,19 +341,14 @@ async def devil_advocate(
 
 
 async def _cache_get(key: str) -> str | None:
-    if _redis:
-        try:
-            return await _redis.get(key)
-        except Exception:
-            pass
-    return _mem_cache.get(key)
+    val = _mem_cache.get(key)
+    if val is not None:
+        return val
+    from services.kv_store import kv_get
+    return kv_get(key)
 
 
 async def _cache_set(key: str, value: str, ttl: int) -> None:
-    if _redis:
-        try:
-            await _redis.set(key, value, ex=ttl)
-            return
-        except Exception:
-            pass
     _mem_cache[key] = value
+    from services.kv_store import kv_set
+    kv_set(key, value, ttl)

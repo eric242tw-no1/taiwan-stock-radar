@@ -38,14 +38,14 @@ def _get_token() -> str:
     return token
 
 
-def _fetch_institutional(stock_id: str, start_date: str, client: httpx.Client) -> list[dict]:
+def _fetch(dataset: str, stock_id: str, start_date: str, client: httpx.Client) -> list[dict]:
     resp = client.get(
         FINMIND_URL,
         params={
-            "dataset":    "TaiwanStockInstitutionalInvestorsBuySell",
-            "data_id":    stock_id,
+            "dataset": dataset,
+            "data_id": stock_id,
             "start_date": start_date,
-            "token":      _get_token(),
+            "token": _get_token(),
         },
         timeout=10,
     )
@@ -96,7 +96,7 @@ def fetch_chip_summary() -> dict[str, Any]:
     with httpx.Client() as client:
         for sid in REPR_STOCKS:
             try:
-                rows = _fetch_institutional(sid, start_date, client)
+                rows = _fetch("TaiwanStockInstitutionalInvestorsBuySell", sid, start_date, client)
                 agg = _aggregate(rows)
                 per_stock[sid] = agg
                 for k in ["foreign", "trust", "dealer"]:
@@ -143,7 +143,7 @@ def fetch_stock_chip(stock_id: str) -> dict[str, Any]:
     start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
     try:
         with httpx.Client() as client:
-            rows = _fetch_institutional(stock_id, start_date, client)
+            rows = _fetch("TaiwanStockInstitutionalInvestorsBuySell", stock_id, start_date, client)
         return {"stock_id": stock_id, "data": rows, "latest": _aggregate(rows)}
     except Exception as exc:
         logger.warning("fetch_stock_chip [%s]: %s", stock_id, exc)
@@ -158,20 +158,8 @@ def fetch_margin(stock_id: str) -> dict[str, Any]:
     start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
     try:
         with httpx.Client() as client:
-            resp = client.get(
-                FINMIND_URL,
-                params={
-                    "dataset":    "TaiwanStockMarginPurchaseShortSale",
-                    "data_id":    stock_id,
-                    "start_date": start_date,
-                    "token":      _get_token(),
-                },
-                timeout=10,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            rows = _fetch("TaiwanStockMarginPurchaseShortSale", stock_id, start_date, client)
 
-        rows = data.get("data", [])
         if not rows:
             return _empty_margin()
 

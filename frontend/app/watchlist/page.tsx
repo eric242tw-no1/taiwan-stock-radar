@@ -47,10 +47,14 @@ function loadGroups(): Group[] {
   try {
     const raw = localStorage.getItem(GROUPS_KEY);
     if (!raw) return DEFAULT_GROUPS.map(g => ({ ...g }));
-    const parsed = JSON.parse(raw) as Group[];
+    const parsed = JSON.parse(raw) as { id: string; name: string; stocks: (string | { code: string })[] }[];
     // 確保始終有 5 組
     while (parsed.length < 5) parsed.push({ ...DEFAULT_GROUPS[parsed.length] });
-    return parsed.slice(0, 5);
+    // 相容 screener 舊格式（曾存 {code,...} 物件陣列）：正規化成代號字串並去重
+    return parsed.slice(0, 5).map(g => ({
+      ...g,
+      stocks: [...new Set(g.stocks.map(s => (typeof s === "string" ? s : s.code)))],
+    }));
   } catch { return DEFAULT_GROUPS.map(g => ({ ...g })); }
 }
 

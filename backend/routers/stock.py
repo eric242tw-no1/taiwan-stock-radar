@@ -25,7 +25,7 @@ async def get_stock_quote(symbol: str):
     if cached:
         return cached
     result = fetch_stock_quote(sym)
-    cache.set(f"quote:{sym}", result)
+    cache.set(f"quote:{sym}", result, ttl=10)
     return result
 
 

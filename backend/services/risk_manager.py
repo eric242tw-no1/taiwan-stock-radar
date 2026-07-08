@@ -95,12 +95,12 @@ class RiskManager:
             return RiskDecision(approved=True, reason="無持倉，跳過相關性檢查")
 
         try:
-            with _get_conn() as conn, conn.cursor() as cur:
+            with get_conn() as conn, conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT symbol_long, symbol_short, corr_60d
                     FROM pairs_config
-                    WHERE (symbol_long = %s OR symbol_short = %s)
+                    WHERE (symbol_long = ? OR symbol_short = ?)
                       AND corr_60d > 0.8
                     """,
                     (symbol, symbol),

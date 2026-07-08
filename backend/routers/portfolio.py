@@ -72,7 +72,7 @@ async def get_yuanta_positions():
     從元大 API 取得即時持倉列表。
     simulation 模式回傳空列表 + simulation badge。
     """
-    from main import _broker
+    from scheduler_tasks import _broker
     simulation = getattr(_broker, "simulation", True)
     try:
         positions = await _broker.get_positions()
@@ -98,7 +98,7 @@ async def get_yuanta_summary():
     從元大 API 取得帳戶摘要（總市值、現金、保證金使用率）。
     simulation 模式回傳 mock 資料。
     """
-    from main import _broker
+    from scheduler_tasks import _broker
     simulation = getattr(_broker, "simulation", True)
     try:
         balance = await _broker.get_balance()
@@ -370,7 +370,7 @@ async def parse_screenshot(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error("截圖解析失敗：%s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"解析失敗：{str(e)}")
+        raise HTTPException(status_code=500, detail="解析失敗，請查看伺服器日誌")
 
     return {
         "method": method,

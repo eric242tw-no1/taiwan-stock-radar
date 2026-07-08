@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,15 +30,6 @@ from db import get_conn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["webhook"])
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-
-try:
-    import redis.asyncio as aioredis
-    _redis: aioredis.Redis | None = aioredis.from_url(REDIS_URL, decode_responses=True)
-except Exception:
-    _redis = None
-
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 
@@ -99,19 +91,22 @@ def _insert_order(
     conn.close()
 
 
-# ── Redis dedup ───────────────────────────────────────────────────────────────
+# ── 訊號去重（行程內 TTL dict，語意同原 Redis SET NX EX 60s）──────────────────
 
-async def _is_duplicate(dedup_key: str) -> bool:
+_DEDUP_TTL = 60
+_dedup_seen: dict[str, float] = {}   # dedup_key → expires_at (monotonic)
+
+
+def _is_duplicate(dedup_key: str) -> bool:
     """Return True and set key (TTL 60 s) if this is a duplicate."""
-    if _redis is None:
-        return False
-    try:
-        # SET NX EX: only set if not exists; returns None if already existed
-        result = await _redis.set(f"tv_dedup:{dedup_key}", "1", nx=True, ex=60)
-        return result is None   # None → key already existed → duplicate
-    except Exception as exc:
-        logger.warning("Redis dedup check failed: %s", exc)
-        return False
+    now = time.monotonic()
+    for k, exp in list(_dedup_seen.items()):
+        if exp <= now:
+            del _dedup_seen[k]
+    if dedup_key in _dedup_seen:
+        return True
+    _dedup_seen[dedup_key] = now + _DEDUP_TTL
+    return False
 
 
 def _build_dedup_key(strategy_id: str, symbol: str, timestamp: int) -> str:
@@ -171,8 +166,8 @@ async def tradingview_webhook(request: Request):
     symbol = _clean_symbol(payload.symbol)
     dedup_key = _build_dedup_key(payload.strategy_id, symbol, payload.timestamp)
 
-    # ── 2. Redis dedup ────────────────────────────────────────
-    if await _is_duplicate(dedup_key):
+    # ── 2. Dedup ──────────────────────────────────────────────
+    if _is_duplicate(dedup_key):
         _insert_tv_signal(
             strategy_id=payload.strategy_id,
             symbol=symbol,
@@ -186,7 +181,7 @@ async def tradingview_webhook(request: Request):
         return {"status": "deduped", "symbol": symbol}
 
     # ── 3. 持倉 diff 計算 ─────────────────────────────────────
-    from main import _broker
+    from scheduler_tasks import _broker
     actual_position = await _broker.get_position(symbol)
     diff = payload.target_position - actual_position
     if diff == 0:
@@ -321,7 +316,7 @@ async def tradingview_webhook(request: Request):
 
         # 買入成功 → 立即啟動 StopLossGuard 雙層保護
         if action == "buy":
-            from main import stop_loss_guard
+            from scheduler_tasks import stop_loss_guard
             try:
                 await stop_loss_guard.setup(
                     symbol=symbol, quantity=quantity,
@@ -336,16 +331,16 @@ async def tradingview_webhook(request: Request):
         logger.error("webhook order failed: %s", exc)
 
     # 推播訊號至 SSE stream（供前端 useSignalStream 使用）
-    if _redis is not None:
-        try:
-            import json as _json
-            await _redis.publish("tv_signals", _json.dumps({
-                "signal_id": signal_id, "symbol": symbol, "action": action,
-                "quantity": quantity, "ai_confidence": ai_confidence,
-                "order_status": order_status, "timestamp": _tw_now(),
-            }, ensure_ascii=False))
-        except Exception as _pub_exc:
-            logger.warning("webhook: Redis publish failed — %s", _pub_exc)
+    try:
+        import json as _json
+        from services.signal_bus import publish as _publish_signal
+        _publish_signal(_json.dumps({
+            "signal_id": signal_id, "symbol": symbol, "action": action,
+            "quantity": quantity, "ai_confidence": ai_confidence,
+            "order_status": order_status, "timestamp": _tw_now(),
+        }, ensure_ascii=False))
+    except Exception as _pub_exc:
+        logger.warning("webhook: signal publish failed — %s", _pub_exc)
 
     await send_message(
         f"{'📈' if action == 'buy' else '📉'} <b>[Webhook] {action.upper()}</b>\n"

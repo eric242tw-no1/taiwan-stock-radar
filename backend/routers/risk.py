@@ -15,9 +15,12 @@ _ATR_CACHE_TTL = 300  # seconds
 
 
 def _get_redis():
+    host = os.getenv("REDIS_HOST", "")
+    if not host:
+        raise RuntimeError("REDIS_HOST not set — ATR cache disabled")
     import redis
     return redis.Redis(
-        host=os.getenv("REDIS_HOST", "redis"),
+        host=host,
         port=int(os.getenv("REDIS_PORT", "6379")),
         decode_responses=True,
     )
@@ -84,7 +87,7 @@ async def get_atr_stop(
 
 @router.get("/watching")
 async def get_watching():
-    from main import stop_loss_guard
+    from scheduler_tasks import stop_loss_guard
     return {"watching": stop_loss_guard.watching}
 
 
