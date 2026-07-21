@@ -92,14 +92,14 @@ def test_missing_field_returns_422(client):
 def test_successful_flow(client, monkeypatch):
     # Patch devil_advocate inside the router module
 
-    async def _approved(*a, **kw):
+ def _approved(*a, **kw):
         return {"confidence": 0.9, "approved": True, "reason": "OK"}
 
     monkeypatch.setattr("agents.ai_engine.devil_advocate", _approved)
 
-    async def _get_pos(symbol): return 0
+    def _get_pos(symbol): return 0
 
-    async def _place(**kw): return {"order_id": "X1"}
+    def _place(**kw): return {"order_id": "X1"}
 
     monkeypatch.setattr("main._broker", type("B", (), {
         "get_position": staticmethod(_get_pos),
