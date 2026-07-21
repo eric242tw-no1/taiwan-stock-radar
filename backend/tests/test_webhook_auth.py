@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 
-import pytest
 
 from utils.webhook_auth import verify_hmac
 

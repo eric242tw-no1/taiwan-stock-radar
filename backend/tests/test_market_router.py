@@ -8,7 +8,6 @@ Covers:
   - /leaders:    returns empty list gracefully when no indicators available
   - /buffett:    endpoint returns ratio + metadata
 """
-import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
@@ -55,7 +54,6 @@ class TestTopMovers:
 
     def test_codes_param_restricts_symbols(self):
         """When codes=2330,2317 is passed, only those two symbols should be fetched."""
-        import routers.market as m
 
         captured = []
 

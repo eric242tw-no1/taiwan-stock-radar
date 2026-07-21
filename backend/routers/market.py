@@ -6,11 +6,11 @@ import asyncio
 from services.data_fetcher import get_cached_us_indices, get_cache_meta
 from services.twse_fetcher import get_cached_tw_market, get_tw_cache_meta
 from services.taifex_fetcher import get_cached_futures_and_fx, get_futures_cache_meta
-from services.finmind_fetcher import get_cached_chip, get_chip_cache_meta, fetch_stock_chip
+from services.finmind_fetcher import get_cached_chip, get_chip_cache_meta
 from services.indicator_service import get_indicators, get_all_indicators, calculate_and_store
 from services.ohlcv_service import fetch_ohlcv
 from services.sector_fetcher import get_cached_sectors, fetch_sectors
-from services.gov_fund_fetcher import get_cached_gov_funds, fetch_gov_funds
+from services.gov_fund_fetcher import get_cached_gov_funds
 from services.fear_greed_fetcher import get_cached_fear_greed
 from services.buffett_fetcher import get_cached_buffett, fetch_buffett
 from services.cache import cache

@@ -106,20 +106,20 @@ def print_summary(results):
     # 寫入報告檔案
     report_path = os.path.join(os.path.dirname(__file__), "..", "docs", "baseline_backtest_report.md")
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(f"# Sprint 1-6 回測基準線報告\n\n")
+        f.write("# Sprint 1-6 回測基準線報告\n\n")
         f.write(f"> 期間：{START} ~ {END}  \n> 生成：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
         f.write(f"**整體平均勝率：{overall_avg_wr:.1f}%**（目標：55–62%）\n\n")
         f.write("| 股票 | 策略 | 交易數 | 勝率 | 總報酬 | Sharpe | 最大DD |\n")
         f.write("|------|------|--------|------|--------|--------|--------|\n")
         for r in results:
             f.write(f"| {r['symbol']} {r['name']} | {r['strategy']} | {r['trades']} | {r['win_rate']:.1f}% | {r['total_return']:+.2f}% | {r['sharpe'] or 'N/A'} | {r['max_dd']:.1f}% |\n")
-        f.write(f"\n## 策略平均\n\n")
+        f.write("\n## 策略平均\n\n")
         for strat, rows in sorted(by_strategy.items()):
             n = len(rows)
             avg_wr  = sum(r["win_rate"] for r in rows) / n
             avg_ret = sum(r["total_return"] for r in rows) / n
             f.write(f"- **{strat}**：平均勝率 {avg_wr:.1f}%，平均報酬 {avg_ret:+.2f}%\n")
-    print(f"\n  [REPORT] 報告已寫入：docs/baseline_backtest_report.md")
+    print("\n  [REPORT] 報告已寫入：docs/baseline_backtest_report.md")
 
 
 if __name__ == "__main__":

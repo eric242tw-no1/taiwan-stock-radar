@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from services.stock_quote_fetcher import fetch_stock_quote
 from services.ohlcv_service import fetch_ohlcv
 from services.finmind_fetcher import fetch_stock_chip, fetch_margin
-from services.indicator_service import get_indicators
 from services.ptt_sentiment import get_ptt_sentiment
 from services.cmoney_sentiment import get_cmoney_sentiment
 from services.cache import cache

@@ -1,5 +1,4 @@
 """Multi-Agent Engine 單元測試：使用 mock Claude API 驗證 Orchestrator 協調流程。"""
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 

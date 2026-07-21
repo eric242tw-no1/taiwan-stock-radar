@@ -5,7 +5,7 @@
 """
 import os
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import httpx
 import pandas as pd
 

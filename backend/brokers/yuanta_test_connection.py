@@ -3,7 +3,6 @@ import os
 import sys
 import time
 import threading
-from pathlib import Path
 from pythonnet import load
 
 load("coreclr")

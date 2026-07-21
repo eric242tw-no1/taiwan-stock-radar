@@ -11,7 +11,7 @@ Covers:
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import services.indicator_service as ind
 

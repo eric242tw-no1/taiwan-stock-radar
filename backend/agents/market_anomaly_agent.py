@@ -1,5 +1,4 @@
 """Market Anomaly Agent — scans for price/volume anomalies every 10 min during trading hours."""
-import asyncio
 import logging
 from datetime import datetime, time as dtime
 

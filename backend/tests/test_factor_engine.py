@@ -1,6 +1,5 @@
 """Factor Engine 單元測試：驗算技術指標計算結果。"""
 import pandas as pd
-import pytest
 from factor_engine import technical
 from factor_engine.output_formatter import bundle, TechnicalFactors, ChipsFactors
 
@@ -99,7 +98,8 @@ def test_bundle_symbol_and_date():
 
 def test_rsi_matches_screener_calc():
     """factor_engine RSI 結果與 screener_agent 原始計算差異 < 0.1。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     from agents.screener_agent import _calc_rsi
 

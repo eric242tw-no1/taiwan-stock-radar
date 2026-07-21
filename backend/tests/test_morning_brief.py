@@ -1,5 +1,4 @@
 """Tests for morning_brief_agent — mock Claude API, test UPSERT dedup."""
-import json
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -39,7 +38,6 @@ async def test_generate_morning_brief_success(mock_claude, mock_upsert, mock_agg
 @pytest.mark.asyncio
 async def test_generate_morning_brief_timeout(mock_claude, mock_upsert, mock_aggregate, mock_market_data):
     """On Claude timeout, no report should be stored."""
-    import asyncio
     mock_aggregate.return_value = mock_market_data
     mock_claude.side_effect = TimeoutError
 

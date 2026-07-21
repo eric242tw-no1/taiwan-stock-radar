@@ -1,5 +1,5 @@
 """Tests for market_anomaly_agent — three anomaly conditions."""
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

@@ -5,7 +5,6 @@ Three independent checks, each returns a RiskDecision.
 All checks are synchronous (DB reads only).
 """
 import logging
-import os
 from dataclasses import dataclass
 
 from db import get_conn

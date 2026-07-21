@@ -16,9 +16,7 @@ Body:
 }
 """
 import asyncio
-import uuid
-from typing import Optional
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from backtest.engine import fetch_backtest_data, run_backtest
 

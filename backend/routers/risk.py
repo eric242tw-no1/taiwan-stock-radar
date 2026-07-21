@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, Query
 
 from db import get_conn
-from services.risk_manager import RiskDecision, RiskManager
+from services.risk_manager import RiskManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/risk", tags=["risk"])

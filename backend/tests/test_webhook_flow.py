@@ -2,10 +2,6 @@
 Integration test: full stateful webhook flow (HMAC → dedup → diff → AI → order)
 Uses monkeypatching — no real DB / Redis / broker required.
 """
-import hashlib
-import hmac
-import json
-import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -95,7 +91,6 @@ def test_missing_field_returns_422(client):
 
 def test_successful_flow(client, monkeypatch):
     # Patch devil_advocate inside the router module
-    import asyncio
 
     async def _approved(*a, **kw):
         return {"confidence": 0.9, "approved": True, "reason": "OK"}

@@ -24,7 +24,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from brokers.base import BrokerBase, BrokerConnectionError, BrokerOrderError
+from brokers.base import BrokerBase, BrokerConnectionError
 
 logger = logging.getLogger(__name__)
 

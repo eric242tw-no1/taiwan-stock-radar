@@ -33,7 +33,7 @@ from agents.alert_agent import run_check_alerts_sync
 from scheduler_tasks import (
     _broker, _morning_brief_sync, _chip_and_anomaly_sync,
     _scan_anomalies_sync, _factor_scan_and_batch_score,
-    _take_account_snapshot, _stop_loss_polling_sync, _run_daily_audit_sync,
+    _stop_loss_polling_sync, _run_daily_audit_sync,
     _fetch_earnings_calendar_sync, _cleanup_notifications_sync,
 )
 

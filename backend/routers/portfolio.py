@@ -9,7 +9,6 @@ import os
 import re
 import io
 import logging
-from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, File, UploadFile, HTTPException

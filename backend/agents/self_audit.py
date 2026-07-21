@@ -119,7 +119,8 @@ class SelfAudit:
 
     def _check_redis(self) -> bool:
         try:
-            import redis, os
+            import redis
+            import os
             url = os.getenv("REDIS_URL", "")
             if not url:
                 return True  # Redis 未設定視為 N/A

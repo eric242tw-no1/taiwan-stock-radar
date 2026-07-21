@@ -1,7 +1,7 @@
 """多空辯論 API 格式驗證測試。"""
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 
 def _make_msg(text: str) -> MagicMock:

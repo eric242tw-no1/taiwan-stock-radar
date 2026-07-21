@@ -7,7 +7,6 @@ import os
 import httpx
 import pandas as pd
 import backtrader as bt
-from datetime import datetime
 
 FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "")
 _FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"

@@ -1,7 +1,7 @@
 """Sector Rotation Agent — computes 4/8/13-week momentum per GICS sector and caches in SQLite."""
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date
 
 logger = logging.getLogger(__name__)
 

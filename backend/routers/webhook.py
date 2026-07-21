@@ -13,7 +13,6 @@ New payload (POST /api/webhook/tradingview):
 Flow: HMAC → dedup → diff → RiskManager.check_max_drawdown → Devil's Advocate → order → DB
 """
 import asyncio
-import hashlib
 import hmac
 import json
 import logging
@@ -25,7 +24,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from utils.telegram import send_message
-from utils.webhook_auth import verify_hmac
 from db import get_conn
 
 logger = logging.getLogger(__name__)
