@@ -96,7 +96,8 @@ export function toTvSymbol(opts: { code: string; market?: "tw" | "us" | "crypto"
  * Tauri 用 opener plugin（WebView 擋 target=_blank），一般瀏覽器 fallback window.open。
  */
 export async function openTvInBrowser(symbol: string) {
-  const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}&locale=zh_TW`;
+  // ponytail: tradingview.com/chart/ doesn't respect locale URL params
+  const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
   try {
     const { openUrl } = await import("@tauri-apps/plugin-opener");
     await openUrl(url);

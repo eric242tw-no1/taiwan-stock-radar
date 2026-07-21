@@ -1,5 +1,5 @@
 {
-  "productName": "Taiwan AI Stock Radar",
+  "productName": "台股AI雷達",
   "version": "1.0.0",
   "identifier": "com.taiwan.ai.stock.radar",
   "build": {
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Taiwan AI Stock Radar",
+        "title": "台股AI雷達",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
