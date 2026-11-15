@@ -78,7 +78,7 @@ async def get_tw_market():
 async def get_all_indicators_endpoint():
     """
     所有追蹤股票的最新技術指標（RSI/MACD/KD/ATR）
-    資料來源：yfinance + pandas-ta，每日15:05更新
+    資料來源：yfinance + fin-primitives，每日15:05更新
     """
     return {"data": get_all_indicators()}
 
