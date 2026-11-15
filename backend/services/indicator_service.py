@@ -1,7 +1,7 @@
 """
 Technical indicator service: RSI / MACD / KD / ATR
 - Fetches OHLCV from yfinance for a list of TW tickers
-- Calculates indicators with pandas-ta
+- Calculates indicators with fin-primitives
 - Upserts into SQLite stock_indicators_daily + daily_price
 - In-memory cache for API reads
 """
@@ -9,8 +9,8 @@ Technical indicator service: RSI / MACD / KD / ATR
 import logging
 from typing import Optional
 
+import fin_primitives as fp
 import pandas as pd
-import pandas_ta as ta
 import yfinance as yf
 
 from db import get_conn
@@ -41,10 +41,19 @@ def _calc_indicators(df: pd.DataFrame) -> Optional[dict]:
     else:
         df.columns = [c.lower() for c in df.columns]
 
-    rsi = ta.rsi(df["close"], length=14)
-    macd_df = ta.macd(df["close"], fast=12, slow=26, signal=9)
-    stoch_df = ta.stoch(df["high"], df["low"], df["close"], k=9, d=3, smooth_k=3)
-    atr = ta.atr(df["high"], df["low"], df["close"], length=14)
+    # fin-primitives rejects NaN inputs, so indicators run on complete bars only.
+    bars = df[["high", "low", "close"]].dropna()
+    if len(bars) < 30:
+        return None
+    high, low, close = bars["high"], bars["low"], bars["close"]
+
+    rsi = fp.rsi(close, 14)                                         # Wilder RSI(14)
+    macd_line = fp.ema(close, 12) - fp.ema(close, 26)               # MACD(12, 26)
+    macd_hist = fp.macd(close, 12, 26, 9)                           # line - EMA9(line)
+    macd_signal = macd_line - macd_hist
+    stoch_k = fp.compute("stochastic_k", close, 9, high=high, low=low).rolling(3).mean()  # KD(9, 3, 3)
+    stoch_d = stoch_k.rolling(3).mean()
+    atr = fp.compute("wilder_smoothed_range", close, 14, high=high, low=low)            # ATR(14), RMA
 
     last = df.index[-1]
 
@@ -54,12 +63,6 @@ def _calc_indicators(df: pd.DataFrame) -> Optional[dict]:
             return None if pd.isna(v) else float(v)
         except Exception:
             return None
-
-    macd_col = [c for c in (macd_df.columns if macd_df is not None else []) if c.startswith("MACD_") and not c.startswith("MACDs") and not c.startswith("MACDh")]
-    sig_col  = [c for c in (macd_df.columns if macd_df is not None else []) if c.startswith("MACDs")]
-    hist_col = [c for c in (macd_df.columns if macd_df is not None else []) if c.startswith("MACDh")]
-    k_col    = [c for c in (stoch_df.columns if stoch_df is not None else []) if c.startswith("STOCHk")]
-    d_col    = [c for c in (stoch_df.columns if stoch_df is not None else []) if c.startswith("STOCHd")]
 
     ma20_series = df["close"].rolling(20).mean()
     ma20_val    = safe(ma20_series)
@@ -77,11 +80,11 @@ def _calc_indicators(df: pd.DataFrame) -> Optional[dict]:
         "close":       close_val,
         "volume":      int(df["volume"].iloc[-1]) if not pd.isna(df["volume"].iloc[-1]) else None,
         "rsi14":       safe(rsi),
-        "macd":        safe(macd_df[macd_col[0]]) if macd_col else None,
-        "macd_signal": safe(macd_df[sig_col[0]])  if sig_col  else None,
-        "macd_hist":   safe(macd_df[hist_col[0]]) if hist_col else None,
-        "k":           safe(stoch_df[k_col[0]])   if k_col    else None,
-        "d":           safe(stoch_df[d_col[0]])   if d_col    else None,
+        "macd":        safe(macd_line),
+        "macd_signal": safe(macd_signal),
+        "macd_hist":   safe(macd_hist),
+        "k":           safe(stoch_k),
+        "d":           safe(stoch_d),
         "atr14":       safe(atr),
         "ma20":        round(ma20_val, 2) if ma20_val else None,
         "ma20_bias":   ma20_bias,
